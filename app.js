@@ -335,7 +335,7 @@ function renderStay() {
   const hotels = D.hotels.map((h) => `<article class="card" id="c-${h.id}"><img src="${h.img}" alt="${esc(h.alt)}" loading="lazy">
     <div class="in"><h3>${esc(h.name)}<span>${esc(h.zh)}</span></h3>
       <dl class="kv">${h.kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-      <div class="addr"><small>地址（給司機看）</small><p lang="vi">${esc(D.addrs[h.addr].vi)}</p></div>
+      <div class="addr"><small>地址（給司機看）</small><p lang="vi" translate="no">${esc(D.addrs[h.addr].vi)}</p></div>
       <p class="acts">${h.links.map(linkHTML).join('')}${addrBtn(h.addr)}</p></div></article>`).join('');
   $('#v-stay').innerHTML = `
   <div class="view-h"><h2>住宿與交通</h2><p>按「給司機看地址」會放大越南文地址，直接拿給司機看。</p></div>
@@ -491,6 +491,7 @@ function openLayer(html, { full } = {}) {
   stack.push(layer);
   history.pushState({ nvSheet: stack.length }, '');
   requestAnimationFrame(() => layer.classList.add('in'));
+  setTimeout(() => layer.classList.add('in'), 60);
   setTimeout(() => layer.querySelector('[data-close]')?.focus({ preventScroll: true }), 50);
   return layer.firstElementChild;
 }
@@ -511,7 +512,7 @@ function openPlace(id) {
   const ph = p.photos || [];
   const gal = ph.length ? `<div class="gal-wrap"><div class="gal">${ph.map((x, i) => `<button type="button" data-lb="${p.id}" data-i="${i}" aria-label="放大第 ${i + 1} 張照片"><img src="${esc(x.t)}" alt="" loading="${i ? 'lazy' : 'eager'}" crossorigin="anonymous" referrerpolicy="no-referrer"></button>`).join('')}</div>${ph.length > 1 ? `<span class="gal-n">1 / ${ph.length}</span>` : ''}</div>
     <p class="credit">${credit(ph[0])}</p>` : '';
-  const rows = [['必點／必看', p.try], ['不吃牛肉', p.noBeef], ['價錢', p.price], ['時間', p.hours], ['地址', p.addr && `<span lang="vi">${esc(p.addr)}</span>`], ['怎麼去', p.walk], ['注意', p.notes], ['預約', p.booking], ['小費', p.tip], ['5 個人', p.group5 && ({ yes: '可以 5 人一起', 'call ahead': '5 人要先預約', unknown: '不確定，先問' }[p.group5] || p.group5)]]
+  const rows = [['必點／必看', p.try], ['不吃牛肉', p.noBeef], ['價錢', p.price], ['時間', p.hours], ['地址', p.addr && `<span lang="vi" translate="no">${esc(p.addr)}</span>`], ['怎麼去', p.walk], ['注意', p.notes], ['預約', p.booking], ['小費', p.tip], ['5 個人', p.group5 && ({ yes: '可以 5 人一起', 'call ahead': '5 人要先預約', unknown: '不確定，先問' }[p.group5] || p.group5)]]
     .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${k === '地址' ? v : linkify(v)}</dd>`).join('');
   const pk = p.packages?.length ? `<div><h3 style="margin:0 0 4px;font-size:1.1rem">套餐和價錢</h3><ul class="pk">${p.packages.map((k) => `<li><b>${esc(k.name_zh || k.name_local)}</b><span class="price">${k.price_vnd ? esc(fmtVnd(k.price_vnd)) : ''}</span><small>${[k.minutes ? k.minutes + ' 分鐘' : '', k.includes_zh].filter(Boolean).map(esc).join('・')}</small></li>`).join('')}</ul></div>` : '';
   const links = [['map', '地圖、照片', p.q]];
@@ -554,8 +555,8 @@ function openAddr(k) {
   const a = S.data.addrs[k];
   if (!a) return;
   openLayer(`${head('給司機看')}<div class="addrbig">
-    <p class="ask" lang="vi">Xin chở tôi đến địa chỉ này.</p>
-    <p class="vi-big" lang="vi">${esc(a.vi)}</p>
+    <p class="ask" lang="vi" translate="no">Xin chở tôi đến địa chỉ này.</p>
+    <p class="vi-big" lang="vi" translate="no">${esc(a.vi)}</p>
     <p class="zh">請載我到這個地址：${esc(a.zh)}</p></div>`, { full: true });
 }
 
@@ -603,9 +604,9 @@ function openAdd(seg, placeId) {
   const opts = S.data.days.map((d) => `<optgroup label="${label(d.date)} ${esc(d.title)}">${d.segs.map((s) => `<option value="${s.key}"${s.key === seg ? ' selected' : ''}>${label(d.date)} ${esc(s.name)}</option>`).join('')}</optgroup>`).join('');
   const sheet = openLayer(`${head('加一個行程')}<div class="sh-body"><form class="form" id="addForm">
     <label>哪一天、哪個時段<select class="field" name="seg">${opts}</select></label>
-    <label>要做什麼<input class="field" name="title" maxlength="80" required value="${esc(p ? shortName(p) : '')}" placeholder="例如：去洗頭、吃河粉"></label>
+    <label>要做什麼<input class="field" name="title" maxlength="80" required value="${esc(p ? shortName(p) : '')}" placeholder="例如：去洗頭、吃河粉…"></label>
     <label>幾點 <small>可以不填</small><input class="field" type="time" name="time"></label>
-    <label>備註 <small>可以不填</small><textarea class="field" name="note" maxlength="500" placeholder="例如：媽媽和玥彤想去"></textarea></label>
+    <label>備註 <small>可以不填</small><textarea class="field" name="note" maxlength="500" placeholder="例如：媽媽和玥彤想去…"></textarea></label>
     <button class="btn solid" type="submit">${I.plus}加進去</button>
     <p class="muted" style="margin:0;font-size:.95rem">加進去之後，全家的手機都看得到，誰都可以刪掉。</p></form></div>`);
   $('#addForm', sheet).addEventListener('submit', async (e) => {

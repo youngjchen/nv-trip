@@ -56,6 +56,16 @@ h1, h2, h3, h4, h5 { text-wrap: balance; }
 a { color: var(--jade); }
 img { max-width: 100%; }
 button { font: inherit; color: inherit; }
+button, a, summary, input, select, textarea { touch-action: manipulation; -webkit-tap-highlight-color: rgba(13, 101, 85, .15); }
+html { scroll-padding-top: 76px; }
+@media (hover: hover) {
+  .btn:hover, .lnk:hover, .opt:hover, .addbtn:hover { background: var(--jade-soft); }
+  .want:hover { background: var(--red-soft); }
+  .btn.solid:hover, .recbtn:hover { filter: brightness(1.08); }
+  .want[aria-pressed="true"]:hover { background: var(--red); filter: brightness(1.08); }
+  .rec-open:hover h6, .tabbar button:hover { color: var(--jade); }
+}
+.btn:active, .lnk:active, .want:active, .recbtn:active, .opt:active, .tabbar button:active { transform: scale(.97); }
 :focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
 [hidden] { display: none !important; }
 .vi { font-style: normal; font-weight: 600; }
@@ -444,7 +454,7 @@ body.flow .view { padding-bottom: 28px; border-bottom: 1px solid var(--line); ma
     <p>這是家人專用的網頁。請用家人傳給你的<b>完整連結</b>打開（連結最後面有一串密碼）。</p>
     <form id="lockForm">
       <label for="lockInput">或把整段連結貼在這裡</label>
-      <input class="field" id="lockInput" autocomplete="off" inputmode="url">
+      <input class="field" id="lockInput" autocomplete="off" inputmode="url" spellcheck="false" autocapitalize="off" placeholder="https://youngjchen.github.io/nv-trip/#k=…">
       <button class="btn solid" type="submit">打開</button>
     </form>
     <p class="err" id="lockErr" hidden></p>
