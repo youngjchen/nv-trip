@@ -209,7 +209,7 @@ function render() {
   <main class="views" id="views">
     ${VIEWS.map(([v, name]) => `<section class="view" id="v-${v}" data-view="${v}" aria-label="${name}"></section>`).join('')}
   </main>
-  <button class="fab" id="chatFab" type="button" data-chat>${I.chat}<span>家人聊天</span><span class="badge" id="badge" hidden></span></button>
+  <button class="fab" id="chatFab" type="button" data-chat aria-label="家人聊天">${I.chat}<span class="fab-txt">家人聊天</span><span class="badge" id="badge" hidden></span></button>
   <nav class="tabbar" aria-label="分頁"><ul>${VIEWS.map(([v, name]) => `<li><button type="button" data-view="${v}">${I[v]}${name}</button></li>`).join('')}</ul></nav>
   <div class="ov" id="ov" hidden></div>`;
   app.hidden = false;
@@ -451,6 +451,7 @@ function showView(v, { instant } = {}) {
   store.set('nv-view', v);
   markTab();
   setHash();
+  fitFab();
 }
 const markTab = () => $$('.tabbar button').forEach((b) => (b.dataset.view === S.view ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
 
@@ -822,5 +823,9 @@ document.addEventListener('change', (e) => {
   packed[id] = e.target.checked;
   store.set('nv-pack-v1', packed);
 });
+
+// 聊天按鈕往下滑就縮成小圓圈，回到最上面再展開
+const fitFab = () => $('#chatFab')?.classList.toggle('mini', scrollY > 60);
+addEventListener('scroll', fitFab, { passive: true });
 
 boot();

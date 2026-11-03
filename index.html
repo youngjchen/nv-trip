@@ -344,13 +344,20 @@ body.flow .view { padding-bottom: 28px; border-bottom: 1px solid var(--line); ma
 .tabbar svg { width: 26px; height: 26px; }
 .tabbar button[aria-current="page"] { color: var(--jade); }
 .tabbar button[aria-current="page"] svg { stroke-width: 2.5; }
+/* 聊天按鈕：在最上面是「家人聊天」長條，往下滑就縮成小圓圈；有新訊息時角落有紅色數字 */
 .fab {
-  position: fixed; z-index: 21; right: var(--gut-r); bottom: calc(var(--tab-h) + 14px + env(safe-area-inset-bottom, 0px));
-  height: 56px; padding: 0 18px 0 14px; display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; border: 0; cursor: pointer;
-  background: var(--red); color: var(--on-accent); font-weight: 700; font-size: 1rem; box-shadow: 0 6px 18px rgba(0, 0, 0, .22);
+  position: fixed; z-index: 21; right: var(--gut-r); bottom: calc(var(--tab-h) + 12px + env(safe-area-inset-bottom, 0px));
+  height: 48px; min-width: 48px; padding: 0 16px 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 999px; border: 0; cursor: pointer; background: var(--red); color: var(--on-accent); font-weight: 700; font-size: .95rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .22); transition: padding .2s ease, gap .2s ease;
 }
-.fab svg { width: 24px; height: 24px; }
-.badge { min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; background: var(--on-accent); color: var(--red); font-size: .85rem; font-weight: 800; display: inline-grid; place-items: center; }
+.fab svg { width: 22px; height: 22px; flex: none; }
+.fab-txt { max-width: 6em; overflow: hidden; white-space: nowrap; transition: max-width .2s ease, opacity .15s ease; }
+.fab.mini { padding: 0; gap: 0; }
+.fab.mini .fab-txt { max-width: 0; opacity: 0; }
+.badge { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--on-accent); color: var(--red); font-size: .8rem; font-weight: 800; display: inline-grid; place-items: center; }
+.fab.mini .badge { position: absolute; top: -6px; right: -6px; box-shadow: 0 0 0 2px var(--red); }
+@media (prefers-reduced-motion: reduce) { .fab, .fab-txt { transition: none; } }
 
 /* ---------- sheets ---------- */
 .ov { position: fixed; inset: 0; z-index: 50; }
