@@ -243,7 +243,6 @@ function renderNow() {
       <button class="btn" type="button" data-view="call">${I.call}打電話</button>
     </div>
     <section class="feed" id="feed"></section>
-    <section class="pending"><h3>還在等確認</h3><ul>${D.pending.map((x) => `<li>${x}</li>`).join('')}</ul></section>
     <p class="endnote">${esc(D.updated.replaceAll('-', '/'))} 整理。時間以飯店、郵輪、司機最後通知為準。</p>
   </div>`;
   renderFeed();
