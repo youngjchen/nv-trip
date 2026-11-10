@@ -18,10 +18,13 @@ const AV = { ba: '爸', ma: '媽', yt: '彤', yk: '駃', cy: '羽' };
 const QUICK = ['我想去這個', '好啊！', '幾點集合？', '我在飯店大廳', '我先回飯店休息', '等我一下'];
 // 常用句：先翻好放著，沒網路也能用
 const PHRASES = [
-  ['點餐', [['我不吃牛肉', 'Tôi không ăn thịt bò.'], ['不要放牛肉', 'Đừng cho thịt bò nhé.'], ['不要辣', 'Không cay nhé.'], ['不要香菜', 'Không cho rau mùi nhé.'], ['不要冰塊', 'Không đá nhé.'], ['少糖', 'Ít đường thôi.'], ['我要這個', 'Tôi lấy cái này.'], ['好吃！', 'Ngon quá!'], ['買單', 'Tính tiền nhé.']]],
-  ['買東西', [['這個多少錢？', 'Cái này bao nhiêu tiền?'], ['一公斤多少錢？', 'Bao nhiêu một cân?'], ['可以便宜一點嗎？', 'Bớt một chút được không?'], ['可以刷卡嗎？', 'Có trả bằng thẻ được không?']]],
-  ['交通、問路', [['請載我到這個地址', 'Cho tôi đến địa chỉ này.'], ['請開慢一點，我會暈車', 'Làm ơn lái chậm một chút, tôi bị say xe.'], ['廁所在哪裡？', 'Nhà vệ sinh ở đâu?'], ['請稍等一下', 'Xin chờ một chút.']]],
-  ['洗頭、按摩', [['輕一點', 'Nhẹ thôi.'], ['可以大力一點', 'Mạnh hơn một chút.'], ['會痛', 'Đau quá.'], ['請幫我把頭髮吹乾', 'Làm ơn sấy khô tóc giúp tôi.'], ['謝謝', 'Cảm ơn.']]],
+  ['打招呼', [['你好', 'Xin chào.'], ['謝謝', 'Cảm ơn.'], ['不用了，謝謝', 'Không, cảm ơn.'], ['不好意思／對不起', 'Xin lỗi.'], ['我聽不懂越南話', 'Tôi không hiểu tiếng Việt.'], ['你會說英文嗎？', 'Bạn có nói tiếng Anh không?'], ['再見', 'Tạm biệt.']]],
+  ['點餐', [['我不吃牛肉', 'Tôi không ăn thịt bò.'], ['這道有牛肉嗎？', 'Món này có thịt bò không?'], ['不要放牛肉', 'Đừng cho thịt bò nhé.'], ['我們 5 個人', 'Chúng tôi có năm người.'], ['請給我菜單', 'Cho tôi xem thực đơn.'], ['我要這個', 'Tôi lấy cái này.'], ['不要辣', 'Không cay nhé.'], ['不要香菜', 'Không cho rau mùi nhé.'], ['不要冰塊', 'Không đá nhé.'], ['少糖', 'Ít đường thôi.'], ['給我一瓶水', 'Cho tôi một chai nước.'], ['我要外帶', 'Cho tôi mang về.'], ['好吃！', 'Ngon quá!'], ['買單', 'Tính tiền nhé.']]],
+  ['買東西', [['這個多少錢？', 'Cái này bao nhiêu tiền?'], ['一公斤多少錢？', 'Bao nhiêu một cân?'], ['太貴了', 'Đắt quá!'], ['可以便宜一點嗎？', 'Bớt một chút được không?'], ['我只是看看', 'Tôi chỉ xem thôi.'], ['有大一點的嗎？', 'Có cỡ lớn hơn không?'], ['可以刷卡嗎？', 'Có trả bằng thẻ được không?']]],
+  ['交通、問路', [['請載我到這個地址', 'Cho tôi đến địa chỉ này.'], ['到這裡多少錢？', 'Đến đây bao nhiêu tiền?'], ['在這裡停', 'Dừng ở đây.'], ['請開慢一點，我會暈車', 'Làm ơn lái chậm một chút, tôi bị say xe.'], ['廁所在哪裡？', 'Nhà vệ sinh ở đâu?'], ['請等我一下', 'Chờ tôi một chút.']]],
+  ['飯店', [['我要辦入住', 'Tôi muốn nhận phòng.'], ['行李可以寄放嗎？', 'Tôi gửi hành lý ở đây được không?'], ['Wi-Fi 密碼是什麼？', 'Mật khẩu wifi là gì?'], ['我要退房', 'Tôi muốn trả phòng.']]],
+  ['洗頭、按摩', [['輕一點', 'Nhẹ thôi.'], ['可以大力一點', 'Mạnh hơn một chút.'], ['會痛', 'Đau quá.'], ['請幫我把頭髮吹乾', 'Làm ơn sấy khô tóc giúp tôi.']]],
+  ['緊急', [['救命！', 'Cứu tôi với!'], ['請叫救護車', 'Gọi xe cứu thương giúp tôi!'], ['我不舒服', 'Tôi thấy không khỏe.'], ['藥局在哪裡？', 'Hiệu thuốc ở đâu?'], ['我的護照不見了', 'Tôi bị mất hộ chiếu.']]],
 ];
 
 const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -56,6 +59,13 @@ const I = {
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
   pin: svg('<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
   near: svg('<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/>'),
+  pill: svg('<rect x="3" y="8.5" width="18" height="7" rx="3.5" transform="rotate(-35 12 12)"/><path d="M9.2 8 14.8 16"/>'),
+  cash: svg('<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5v5M17.5 9.5v5"/>'),
+  users: svg('<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.5M17.5 14a5 5 0 0 1 3 5"/>'),
+  check: svg('<path d="M4 12.5l5 5L20 6.5"/>'),
+  copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
+  plane: svg('<path d="M10.5 13.5 3 11l1.5-1.5 7 1 4-4.5c1-1 2.6-1.2 3.3-.5s.5 2.3-.5 3.3l-4.5 4 1 7L14 21.5l-2.5-7.5-3 2.5v2l-1.5 1-1-3-3-1 1-1.5h2z"/>'),
+  ticket: svg('<path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z"/><path d="M14 7v10" stroke-dasharray="2 2"/>'),
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -412,63 +422,88 @@ function fillRecs(key) {
   box.innerHTML = groupedRecs(list);
 }
 
+// 分區標題（和每日行程的「上午」「下午」同一種樣式）
+const sectH = (name, extra = '') => `<div class="seg-h"><h3>${name}</h3><span class="sp"></span>${extra}</div>`;
+// 一個可以點開的主題：收起來是圖示＋標題＋一行重點
+let topicSeq = 0;
+function topicHTML({ icon, h, m, body, open = false }) {
+  const id = 'tp' + (++topicSeq);
+  return `<div class="ev topic${open ? ' open' : ''}">
+    <button class="ev-row" type="button" data-ev aria-expanded="${open}" aria-controls="${id}">
+      <span class="tp-i">${I[icon] || I.info}</span>
+      <span class="ev-main"><span class="ev-h">${h}</span>${m ? `<span class="ev-m">${m}</span>` : ''}</span>
+      <span class="ev-side"><span class="chev">${I.chev}</span></span></button>
+    <div class="ev-d" id="${id}"><div><div class="ev-in">${body}</div></div></div></div>`;
+}
+
 function renderStay() {
   const D = S.data;
   const fl = D.flights.map((f) => `<div class="fl"><p class="fl-lbl">${esc(f.label)}<b>${esc(f.no)}</b></p>
-    <div class="fl-end"><span class="fl-code">${f.from[0]}</span><span class="fl-time">${f.from[1]}</span><span class="fl-city">${esc(f.from[2])}</span></div>
-    <span class="fl-arrow" aria-hidden="true">→</span>
-    <div class="fl-end"><span class="fl-code">${f.to[0]}</span><span class="fl-time">${f.to[1]}</span><span class="fl-city">${esc(f.to[2])}</span></div></div>`).join('');
+    <div class="fl-end"><span class="fl-time">${f.from[1]}</span><span class="fl-city">${esc(f.from[2])}</span></div>
+    <span class="fl-arrow" aria-hidden="true">${I.plane}</span>
+    <div class="fl-end"><span class="fl-time">${f.to[1]}</span><span class="fl-city">${esc(f.to[2])}</span></div></div>`).join('');
+  const kv = (rows) => `<dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
   const hotels = D.hotels.map((h) => `<article class="card" id="c-${h.id}"><img src="${h.img}" alt="${esc(h.alt)}" loading="lazy">
     <div class="in"><h3>${esc(h.name)}<span>${esc(h.zh)}</span></h3>
-      <dl class="kv">${h.kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-      <div class="addr"><small>地址（給司機看）</small><p lang="vi" translate="no">${esc(D.addrs[h.addr].vi)}</p></div>
-      <p class="acts">${h.links.map(linkHTML).join('')}${addrBtn(h.addr)}</p></div></article>`).join('');
+      ${kv(h.kv)}
+      <button class="addr" type="button" data-addr="${h.addr}"><small>${I.stop}給司機看</small><span lang="vi" translate="no">${esc(D.addrs[h.addr].vi)}</span></button>
+      <p class="acts">${h.links.map(linkHTML).join('')}</p>
+      ${h.more?.length ? topicHTML({ icon: 'info', h: '更多', body: kv(h.more) }) : ''}</div></article>`).join('');
   $('#v-stay').innerHTML = `
-  <div class="view-h"><h2>住宿與交通</h2></div>
-  <div class="stack">
-    <article class="card"><div class="in"><h3>航班<span>越捷航空 VietJet・每人託運 20 公斤、手提 7 公斤</span></h3><div>${fl}</div>
-      <p class="warn">越南電子簽證：5 人都已核准，單次入境，效期 11/15–11/21。每人印一份自己的帶著。</p></div></article>
-    ${hotels}
-    <article class="card"><div class="in"><h3>${esc(D.car.head)}<span>${esc(D.car.sub)}</span></h3><p>${esc(D.car.note)}</p>
-      <ol class="legs">${D.car.legs.map(([t, d, s]) => `<li><b>${t}<small>${d}</small></b><span>${esc(s)}</span></li>`).join('')}</ol>
-      <p class="acts">${linkHTML(['wa', 'WhatsApp Mr. Phuong', '+84854848484'])}</p></div></article>
-    <article class="card"><div class="in"><h3>門票、預訂</h3><dl class="kv">${D.tickets.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></div></article>
-  </div>`;
+  <h2 class="sr-only">住宿與交通</h2>
+  ${sectH('航班')}
+  <div class="flights">${fl}<p class="visa">${I.check}<span>5 人電子簽證都已核准（11/15–11/21 單次入境），每人印一份自己的帶著</span></p></div>
+  ${sectH('住宿')}
+  <div class="stack">${hotels}</div>
+  ${sectH('包車')}
+  <div class="car"><p class="car-h"><b>${esc(D.car.head)}</b><span>${esc(D.car.sub)}</span></p>
+    <ol class="legs">${D.car.legs.map(([t, d, s]) => `<li><b>${t}<small>${d}</small></b><span>${esc(s)}</span></li>`).join('')}</ol>
+    <p class="acts">${linkHTML(['wa', 'WhatsApp Mr. Phuong', '+84854848484'])}</p></div>
+  ${sectH('門票、預訂')}
+  <div class="car">${kv(D.tickets)}</div>`;
 }
 
 function contactHTML(c) {
   const main = c.wa ? linkHTML(['wa', 'WhatsApp', c.wa]) : linkHTML(['tel', '撥打', c.tel]);
-  return `<li class="contact"><div class="who"><b>${esc(c.who)}</b><span>${esc(c.sub)}</span></div><p class="num">${esc(c.num)}</p>
-    <p class="acts">${main}<button class="btn" type="button" data-copy="${esc(c.wa || c.tel)}">複製</button></p></li>`;
+  return `<li class="contact"><div class="who"><b>${esc(c.who)}</b><span>${esc(c.sub)}</span><span class="num">${esc(c.num)}</span></div>
+    <div class="c-acts">${main}<button class="ib" type="button" data-copy="${esc(c.wa || c.tel)}" aria-label="複製 ${esc(c.who)} 的電話">${I.copy}</button></div></li>`;
 }
 
 function renderCall() {
   const D = S.data;
   $('#v-call').innerHTML = `
-  <div class="view-h"><h2>電話</h2></div>
-  <ul class="contacts">${D.contacts.map(contactHTML).join('')}</ul>
-  <h3 class="sub-h">緊急狀況</h3>
+  <h2 class="sr-only">電話</h2>
+  ${sectH('緊急')}
   <div class="sos">${D.sos.map(([n, t]) => `<a href="tel:${n}"><b>${n}</b><span>${t}</span></a>`).join('')}</div>
   <ul class="contacts">${D.emergency.map(contactHTML).join('')}</ul>
-  <p class="warn" style="margin-top:12px">${esc(D.emergencyNote)}</p>`;
+  <p class="warn">${esc(D.emergencyNote)}</p>
+  ${sectH('聯絡人')}
+  <ul class="contacts">${D.contacts.map(contactHTML).join('')}</ul>`;
 }
 
 function renderTips() {
   const D = S.data;
   const spa = D.places.filter((p) => p.group === 'spa' && p.city === 'hanoi');
   const packed = store.get('nv-pack-v1', {});
+  const g = Math.min(store.get('nv-phg', 1), PHRASES.length - 1);
+  const pts = (list) => `<ul class="pts">${list.map((x) => `<li>${rich(x)}</li>`).join('')}</ul>`;
   $('#v-tips').innerHTML = `
-  <div class="view-h"><h2>出門須知</h2></div>
-  <div class="stack">
-    <div class="tip"><h3>我們 5 個人</h3><ul class="members">${D.members.map((m) => `<li>${avatar(m.id)}<div><b>${esc(m.name)} ${esc(m.full)}</b><span class="en">${esc(m.en)}</span><span class="tagrow">${m.tags.map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('')}</span></div></li>`).join('')}</ul></div>
-    ${D.tips.map((t) => `<div class="tip"><h3>${t.h}</h3>${t.html}</div>`).join('')}
-    ${spa.length ? `<div class="tip" id="spa"><h3>越式洗頭、按摩</h3>
-      ${D.spaTips?.length ? `<details><summary>去之前要知道：小費、預約、避開陷阱</summary><ul>${D.spaTips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>
-      <div class="recs" style="padding:0">${spa.map(recHTML).join('')}</div>` : ''}
-    <div class="tip"><h3>要帶的東西</h3>
-      <ul class="checks">${D.packing.map(([id, t]) => `<li><input type="checkbox" id="pk-${id}" data-pack="${id}"${packed[id] ? ' checked' : ''}><label for="pk-${id}">${esc(t)}</label></li>`).join('')}</ul></div>
-  </div>`;
+  <h2 class="sr-only">出門須知</h2>
+  ${sectH('我們 5 個人')}
+  <ul class="members">${D.members.map((m) => `<li>${avatar(m.id)}<div class="mb"><b>${esc(m.name)}</b><span>${esc(m.full)}・<span class="en">${esc(m.en)}</span></span></div><span class="tagrow">${m.tags.map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('')}</span></li>`).join('')}</ul>
+  ${sectH('注意事項')}
+  <div class="topics">
+    ${D.tips.map((t) => topicHTML({ icon: t.icon, h: esc(t.h), m: esc(t.m), body: pts(t.p) })).join('')}
+    ${spa.length ? topicHTML({ icon: 'spa', h: '越式洗頭、按摩', m: `${spa.length} 家・套餐和價錢`, body: `<div class="recs" style="padding:0">${spa.map(recHTML).join('')}</div>${D.spaTips?.length ? pts(D.spaTips) : ''}` }) : ''}
+    ${topicHTML({ icon: 'check', h: '要帶的東西', m: `<span id="packN">${packCount(packed)}</span>`, body: `<ul class="checks">${D.packing.map(([id, t]) => `<li><input type="checkbox" id="pk-${id}" data-pack="${id}"${packed[id] ? ' checked' : ''}><label for="pk-${id}">${esc(t)}</label></li>`).join('')}</ul>` })}
+  </div>
+  ${sectH('常用越南語')}
+  <div class="phg" role="tablist" aria-label="句子分類">${PHRASES.map(([name], i) => `<button type="button" role="tab" data-phg="${i}" aria-selected="${i === g}">${name}</button>`).join('')}</div>
+  <ul class="phr2" id="phr2">${phraseItems(g)}</ul>`;
 }
+const packCount = (packed) => `已準備 ${S.data.packing.filter(([id]) => packed[id]).length} / ${S.data.packing.length}`;
+// 常用越南語：點整列就唸，右邊的放大鍵給對方看
+const phraseItems = (g) => PHRASES[g][1].map(([zh, vi]) => `<li><button class="ph-say" type="button" data-say="${esc(vi)}"><b lang="vi" translate="no">${esc(vi)}</b><span>${esc(zh)}</span>${I.speak}</button><button class="ib" type="button" data-bigv="${esc(vi)}" data-bigz="${esc(zh)}" aria-label="放大給對方看：${esc(zh)}">${I.full}</button></li>`).join('');
 
 // ---------- now / next ----------
 function tick() {
@@ -1257,6 +1292,13 @@ document.addEventListener('click', (e) => {
   }
   else if (d.pop) { if (!openPop(placePop(d.pop), t)) openPlace(d.pop); }
   else if (d.say) say(d.say);
+  else if (d.bigv) showBig(d.bigv, d.bigz);
+  else if (d.phg) {
+    const g = +d.phg;
+    store.set('nv-phg', g);
+    $$('[data-phg]').forEach((b) => b.setAttribute('aria-selected', String(b === t)));
+    $('#phr2').innerHTML = phraseItems(g);
+  }
   else if (d.tip) {
     const txt = d.tip === 'tz' ? '行程上的時間都是越南時間，比台灣慢 1 小時。' : S.data.segTips[d.tip];
     if (txt && !openPop(`<p class="pop-tip">${rich(esc(txt))}</p>`, t)) toast(txt);
@@ -1309,6 +1351,8 @@ document.addEventListener('change', (e) => {
   const packed = store.get('nv-pack-v1', {});
   packed[id] = e.target.checked;
   store.set('nv-pack-v1', packed);
+  const n = $('#packN');
+  if (n) n.textContent = packCount(packed);
 });
 
 // 聊天按鈕往下滑就縮成小圓圈，回到最上面再展開
