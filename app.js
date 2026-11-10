@@ -178,6 +178,23 @@ function linkHTML([type, text, val]) {
   return `<a class="lnk map" href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 }
 const addrBtn = (k) => `<button class="lnk car" type="button" data-addr="${k}">給司機看地址</button>`;
+const stripZh = (s) => String(s || '').replace(/（[^）]*）/g, ' ').replace(/[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+/g, ' ').replace(/\s+/g, ' ').replace(/^[\s,.:;–-]+|[\s,.:;–-]+$/g, '');
+function grabDest(p) {
+  const name = stripZh(p.local) || stripZh(p.name) || stripZh(plabel(p.id)[0]);
+  // 地址有好幾個或來源不一致的，只給店名，讓 Grab 自己找
+  const raw = /不一|不確定|沒查到/.test(p.addr || '') ? '' : String(p.addr || '').split(/[；;]|另有|也有|和/)[0];
+  const addr = stripZh(raw).replace(/\s+,/g, ',');
+  if (!addr && p.group !== 'see') return '';   // 沒地址的小吃、菜名（例如寧平鍋巴）不放 Grab
+  return [name, addr && !addr.includes(name) ? addr : ''].filter(Boolean).join(', ');
+}
+const addrText = (k) => (S.data.addrs[k]?.vi || '').replace(/\n/g, ', ');
+const grabBtn = (text) => text ? `<button class="lnk grab" type="button" data-grab="${esc(text)}">叫 Grab</button>` : '';
+async function openGrab(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { showBig(text, '在 Grab 的目的地輸入這段'); return; }
+  toast('目的地已複製，在 Grab 的「要去哪裡」貼上');
+  setTimeout(() => { location.href = 'grab://open?screenType=BOOKING&dropOffKeywords=' + encodeURIComponent(text); }, 700);
+}
 
 // 店名：原文＋（中文概述）。行程文字裡的 {id} 會換成可以點的店名，點了跳小浮窗（placePop）。
 const plabel = (id) => S.data.labels?.[id] || [shortName(S.place.get(id) || { name: id }), ''];
@@ -204,7 +221,9 @@ function evHTML(e, extraTop = '', { open = false } = {}) {
   const pts = (e.p || []).map((x) => `<li>${rich(x)}</li>`).join('');
   const chipRow = (ids, icon, name) => ids?.length ? `<div class="eats"><span class="eats-l">${icon}${name}</span><div class="eats-r">${ids.map(eatChip).join('')}</div></div>` : '';
   const eats = chipRow(e.route, I.pin, '路線') + chipRow(e.eat, I.eat, '順路') + chipRow(e.near, I.near, '飯店附近');
-  const acts = (e.links?.length || e.addr) ? `<p class="acts">${(e.links || []).map(linkHTML).join('')}${e.addr ? addrBtn(e.addr) : ''}</p>` : '';
+  const firstId = (e.p || []).join(' ').match(/\{([a-z0-9-]+)\}/)?.[1];
+  const grab = e.addr ? grabBtn(addrText(e.addr)) : (e.links?.length && S.place.has(firstId) ? grabBtn(grabDest(S.place.get(firstId))) : '');
+  const acts = (e.links?.length || e.addr) ? `<p class="acts">${(e.links || []).map(linkHTML).join('')}${grab}${e.addr ? addrBtn(e.addr) : ''}</p>` : '';
   const flags = (e.flags || []).map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('');
   const body = pts || e.warn || eats || acts;
   const time = `<span class="t${e.w ? ' w' : ''}">${extraTop}${esc(e.t)}${e.small ? `<small>${esc(e.small)}</small>` : ''}</span>`;
@@ -252,7 +271,7 @@ function placePop(id) {
     ${p.why ? `<p class="pop-why">${esc(p.why)}</p>` : ''}
     ${placeWhere(p) ? `<p class="pop-loc">${I.pin}<span>${esc(placeWhere(p))}</span></p>` : ''}
     ${facts.length ? `<p class="pop-f">${facts.map(esc).join('・')}</p>` : ''}
-    <div class="pop-a">${wantBtn(id)}${linkHTML(['map', '地圖', p.q])}<button class="btn small" type="button" data-open="${id}">詳細</button>${w.length ? `<span class="avs">${w.map((m) => avatar(m, true)).join('')}</span>` : ''}</div>`;
+    <div class="pop-a">${wantBtn(id)}${linkHTML(['map', '地圖', p.q])}${grabBtn(grabDest(p))}<button class="btn small" type="button" data-open="${id}">詳細</button>${w.length ? `<span class="avs">${w.map((m) => avatar(m, true)).join('')}</span>` : ''}</div>`;
 }
 
 const thumb = (p) => p.photos?.[0]
@@ -447,7 +466,7 @@ function renderStay() {
     <div class="in"><h3>${esc(h.name)}<span>${esc(h.zh)}</span></h3>
       ${kv(h.kv)}
       <button class="addr" type="button" data-addr="${h.addr}"><small>${I.stop}給司機看</small><span lang="vi" translate="no">${esc(D.addrs[h.addr].vi)}</span></button>
-      <p class="acts">${h.links.map(linkHTML).join('')}</p>
+      <p class="acts">${h.links.map(linkHTML).join('')}${grabBtn(addrText(h.addr))}</p>
       ${h.more?.length ? topicHTML({ icon: 'info', h: '更多', body: kv(h.more) }) : ''}</div></article>`).join('');
   $('#v-stay').innerHTML = `
   <h2 class="sr-only">住宿與交通</h2>
@@ -650,7 +669,7 @@ function openPlace(id) {
       ${rows ? `<dl class="dl">${rows}</dl>` : ''}
       <p class="wanters" data-wanters="${p.id}"></p>
       ${p.sources?.length ? `<details class="src"><summary>資料來源（${p.sources.length}）</summary>${p.sources.map((u) => `<div><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></div>`).join('')}</details>` : ''}
-      <div class="sticky-acts">${wantBtn(p.id)}${links.map(linkHTML).join('')}
+      <div class="sticky-acts">${wantBtn(p.id)}${links.map(linkHTML).join('')}${grabBtn(grabDest(p))}
         <button class="btn" type="button" data-addplace="${p.id}">${I.plus}加進行程</button>
         <button class="btn" type="button" data-chatref="${p.id}">${I.chat}傳到聊天</button></div>
     </div>`, { full: true });
@@ -680,7 +699,8 @@ function openAddr(k) {
   openLayer(`${head('給司機看')}<div class="addrbig">
     <p class="ask" lang="vi" translate="no">Xin chở tôi đến địa chỉ này.</p>
     <p class="vi-big" lang="vi" translate="no">${esc(a.vi)}</p>
-    <p class="zh">請載我到這個地址：${esc(a.zh)}</p></div>`, { full: true });
+    <p class="zh">請載我到這個地址：${esc(a.zh)}</p>
+    <p class="acts" style="justify-content:center">${grabBtn(addrText(k))}</p></div>`, { full: true });
 }
 
 function openMe(after) {
@@ -1263,13 +1283,14 @@ function toast(msg) {
 }
 
 async function copy(text, btn) {
+  const orig = btn.innerHTML;
   try { await navigator.clipboard.writeText(text); btn.textContent = '已複製'; }
   catch {
     const num = btn.closest('.contact')?.querySelector('.num');
     if (num) { const r = document.createRange(); r.selectNodeContents(num); getSelection().removeAllRanges(); getSelection().addRange(r); }
     btn.textContent = '已選取，長按複製';
   }
-  setTimeout(() => { btn.textContent = '複製'; }, 2000);
+  setTimeout(() => { btn.innerHTML = orig; }, 2000);
 }
 
 async function share() {
@@ -1292,6 +1313,7 @@ document.addEventListener('click', (e) => {
   }
   else if (d.pop) { if (!openPop(placePop(d.pop), t)) openPlace(d.pop); }
   else if (d.say) say(d.say);
+  else if (d.grab) openGrab(d.grab);
   else if (d.bigv) showBig(d.bigv, d.bigz);
   else if (d.phg) {
     const g = +d.phg;
