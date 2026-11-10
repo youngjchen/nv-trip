@@ -1039,6 +1039,7 @@ function makeCam(sheet) {
     stop, snap, again,
     async start() {
       if (stream) return;
+      loadAI().catch(() => {});   // 開鏡頭時先把翻譯模組載好，第一張比較快
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
       } catch (e) {
