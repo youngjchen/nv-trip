@@ -1,5 +1,5 @@
 // 離線也能看：網頁本身用「先上網、沒網路才用存檔」，照片和 Firebase 程式用「有存檔就直接用」。
-const CORE = 'nv-core-v1';
+const CORE = 'nv-core-v2';
 const ASSETS = 'nv-assets-v1';
 const FILES = ['./', './index.html', './app.js', './data.bin', './icon.svg'];
 
@@ -18,7 +18,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then((res) => {
+    // no-cache：每次都跟伺服器確認有沒有新版（沒變就回 304，很快）
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(CORE).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => hit || caches.match('./index.html'))));
