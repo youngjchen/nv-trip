@@ -784,25 +784,56 @@ const M_TEXT = [{ model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.5-fl
 const M_IMG = [{ model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.8-flash', think: 0 }];
 
 // 模型忙線（500/503/429）或太慢時換下一個；onText 有給就邊收邊交出目前收到的全文
-async function gemini(models, parts, { timeout = 15000, onText, json } = {}) {
+async function loadAI() {
   if (!S.app) throw new Error('no app');
   const AI = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
   S.ai ||= AI.getAI(S.app, { backend: new AI.GoogleAIBackend() });
+  return AI;
+}
+const genCfg = (think) => (think === 0 ? { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } } : { temperature: 0.1 });
+async function gemini(models, parts, { timeout = 15000 } = {}) {
+  const AI = await loadAI();
   let err;
   for (const { model, think } of models) {
     try {
-      const generationConfig = { temperature: 0.1 };
-      if (think === 0) generationConfig.thinkingConfig = { thinkingBudget: 0 };
-      if (json) generationConfig.responseMimeType = 'application/json';
-      const m = AI.getGenerativeModel(S.ai, { model, generationConfig }, { timeout });
-      if (!onText) return (await m.generateContent(parts)).response.text().trim();
-      const r = await m.generateContentStream(parts);
-      let text = '';
-      for await (const chunk of r.stream) { text += chunk.text(); onText(text); }
-      return text.trim();
+      const m = AI.getGenerativeModel(S.ai, { model, generationConfig: genCfg(think) }, { timeout });
+      return (await m.generateContent(parts)).response.text().trim();
     } catch (e) { err = e; console.warn(model, e); }
   }
   throw err;
+}
+// 看圖用的串流版：伺服器有時要排隊 10 秒以上，所以前一個模型 hedge 毫秒還沒開始回，
+// 就同時問下一個模型，誰先開始回就用誰；回到一半斷線就先用已經收到的。
+async function geminiStream(models, parts, { onText, hedge = 4000, timeout = 25000 } = {}) {
+  const AI = await loadAI();
+  return new Promise((resolve, reject) => {
+    let win = -1, next = 0, live = 0, done = false, got = '', err;
+    const end = (fn, v) => { if (done) return; done = true; clearInterval(th); clearTimeout(tt); fn(v); };
+    const launch = () => {
+      if (done || win >= 0 || next >= models.length) return;
+      const i = next++; live++;
+      const { model, think } = models[i];
+      (async () => {
+        let text = '';
+        try {
+          const r = await AI.getGenerativeModel(S.ai, { model, generationConfig: genCfg(think) }, { timeout }).generateContentStream(parts);
+          r.response.catch(() => {});
+          for await (const chunk of r.stream) {
+            if (done || (win >= 0 && win !== i)) return;   // 另一個模型先回了
+            win = i; text += chunk.text(); got = text; onText?.(text);
+          }
+          end(resolve, { text: text.trim() });
+        } catch (e) {
+          console.warn(model, e); err = e; live--;
+          if (win === i) return end(resolve, { text: text.trim(), partial: true });
+          if (win < 0) { if (next < models.length) launch(); else if (!live) end(reject, err); }
+        }
+      })();
+    };
+    const th = setInterval(launch, hedge);
+    const tt = setTimeout(() => (got ? end(resolve, { text: got.trim(), partial: true }) : end(reject, err || new Error('timeout'))), timeout + 8000);
+    launch();
+  });
 }
 // 從還沒收完的 JSON 裡，先撈出已經完整的那幾段
 const boxItems = (text) => (text.match(/\{[^{}]*?"box_2d"\s*:\s*\[[^\]]*\][^{}]*?\}/g) || [])
@@ -965,14 +996,18 @@ function makeCam(sheet) {
     show('#liveSnap', false); show('#liveAgain', mode !== 'off');
     st.textContent = '翻譯中…';
     try {
-      const text = await gemini(M_IMG, [PROMPT_BOX, { inlineData: { data: dataUrl.split(',')[1], mimeType: 'image/jpeg' } }], {
-        timeout: 20000, json: true,
-        onText: (t) => { if (my !== seq) return; const got = boxItems(t); if (got.length !== items.length) { items = got; render(); } },
+      const { text, partial } = await geminiStream(M_IMG, [PROMPT_BOX, { inlineData: { data: dataUrl.split(',')[1], mimeType: 'image/jpeg' } }], {
+        onText: (t) => {
+          if (my !== seq) return;
+          const got = boxItems(t);
+          if (got.length !== items.length) { items = got; render(); st.textContent = `翻譯中…已經 ${items.length} 段`; }
+        },
       });
       if (my !== seq) return;
-      try { const all = JSON.parse(text); if (Array.isArray(all)) items = all.filter((x) => x && Array.isArray(x.box_2d) && x.zh); } catch { /* 用邊收邊撈的結果 */ }
+      const all = boxItems(text);
+      if (all.length >= items.length) items = all;
       render();
-      st.textContent = items.length ? '點中文可以放大' : '沒有看到文字，靠近一點再翻一張';
+      st.textContent = !items.length ? '沒有看到文字，靠近一點再翻一張' : partial ? '可能沒翻完，可以再翻一張' : '點中文可以放大';
     } catch (e) {
       console.warn(e);
       if (my === seq) st.textContent = '翻譯失敗（可能沒網路），再翻一張試試';
