@@ -791,7 +791,7 @@ async function gemini(models, parts, timeout = 15000) {
   throw err;
 }
 const M_TEXT = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.6-flash'];
-const M_IMG = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+const M_IMG = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
 function openTranslate(tab = store.get('nv-trtab', 'cam')) {
   const sheet = openLayer(`${head('翻譯')}<div class="sh-body tr">
