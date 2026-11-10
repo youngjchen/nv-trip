@@ -8,6 +8,7 @@ const FB = {
   messagingSenderId: '637892467866',
   appId: '1:637892467866:web:b30695db236d0aacb25323',
 };
+const RECAPTCHA_KEY = '6Lf4uBkuAAAAAKUa7_RQyeChv6VeUQRQWAEQpDeO';
 const OFF_VN = 7 * 36e5, OFF_TW = 8 * 36e5;
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const VIEWS = [['now', '現在'], ['days', '每日行程'], ['stay', '住宿交通'], ['call', '電話'], ['tips', '須知']];
@@ -15,6 +16,13 @@ const GROUPS = [['eat', '好吃的'], ['cafe', '咖啡、甜點'], ['see', '景�
 const WHO = { tourist: '觀光客推薦', local: '在地人推薦', both: '觀光客、在地人都推' };
 const AV = { ba: '爸', ma: '媽', yt: '彤', yk: '駃', cy: '羽' };
 const QUICK = ['我想去這個', '好啊！', '幾點集合？', '我在飯店大廳', '我先回飯店休息', '等我一下'];
+// 常用句：先翻好放著，沒網路也能用
+const PHRASES = [
+  ['點餐', [['我不吃牛肉', 'Tôi không ăn thịt bò.'], ['不要放牛肉', 'Đừng cho thịt bò nhé.'], ['不要辣', 'Không cay nhé.'], ['不要香菜', 'Không cho rau mùi nhé.'], ['不要冰塊', 'Không đá nhé.'], ['少糖', 'Ít đường thôi.'], ['我要這個', 'Tôi lấy cái này.'], ['好吃！', 'Ngon quá!'], ['買單', 'Tính tiền nhé.']]],
+  ['買東西', [['這個多少錢？', 'Cái này bao nhiêu tiền?'], ['一公斤多少錢？', 'Bao nhiêu một cân?'], ['可以便宜一點嗎？', 'Bớt một chút được không?'], ['可以刷卡嗎？', 'Có trả bằng thẻ được không?']]],
+  ['交通、問路', [['請載我到這個地址', 'Cho tôi đến địa chỉ này.'], ['請開慢一點，我會暈車', 'Làm ơn lái chậm một chút, tôi bị say xe.'], ['廁所在哪裡？', 'Nhà vệ sinh ở đâu?'], ['請稍等一下', 'Xin chờ một chút.']]],
+  ['洗頭、按摩', [['輕一點', 'Nhẹ thôi.'], ['可以大力一點', 'Mạnh hơn một chút.'], ['會痛', 'Đau quá.'], ['請幫我把頭髮吹乾', 'Làm ơn sấy khô tóc giúp tôi.'], ['謝謝', 'Cảm ơn.']]],
+];
 
 const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const I = {
@@ -38,6 +46,12 @@ const I = {
   shop: svg('<path d="M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2"/>'),
   spa: svg('<path d="M12 21c-4 0-7-3-7-6 2 0 4 .8 5 2-1-3 0-7 2-10 2 3 3 7 2 10 1-1.2 3-2 5-2 0 3-3 6-7 6z"/>'),
   stop: svg('<path d="M4 16v-4l2-5h12l2 5v4zM4 16v3M20 16v3M3 12h18"/>'),
+  tr: svg('<path d="M4 5h9M8.5 3v2M6 5c1 4 4 7 7 8M11 5c-1 4-4 7-7 8M13 21l4-10 4 10M14.5 17h5"/>'),
+  cam: svg('<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>'),
+  mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
+  speak: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
+  img: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/>'),
+  full: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -53,7 +67,7 @@ const S = {
   data: null, key: null, me: store.get('nv-me', null), view: 'now', day: null,
   mode: store.get('nv-mode', 'page'), fs: store.get('nv-fs', 1), scroll: {},
   place: new Map(), segs: [], events: [], openRecs: new Set(),
-  likes: {}, plans: [], msgs: [], F: null, col: null, synced: false, lastRead: store.get('nv-read', 0), draftRef: null,
+  likes: {}, plans: [], msgs: [], F: null, col: null, synced: false, lastRead: store.get('nv-read', 0), draftRef: null, draftPic: null, pics: new Map(), app: null,
 };
 
 // ---------- time ----------
@@ -204,6 +218,7 @@ function render() {
   <header class="top">
     <div class="brand"><b>${esc(S.data.title)}</b><small id="topSub"></small></div>
     <button class="chip-me" id="meBtn" type="button"></button>
+    <button class="iconbtn" type="button" data-tr aria-label="翻譯">${I.tr}</button>
     <button class="iconbtn" id="setBtn" type="button" aria-label="設定">${I.gear}</button>
   </header>
   <main class="views" id="views">
@@ -241,6 +256,7 @@ function renderNow() {
     <div class="quick">
       <button class="btn" type="button" id="addrNow">${I.stop}給司機看地址</button>
       <button class="btn" type="button" data-view="call">${I.call}打電話</button>
+      <button class="btn wide" type="button" data-tr>${I.tr}翻譯（拍菜單、說話、常用句）</button>
     </div>
     <section class="feed" id="feed"></section>
     <p class="endnote">${esc(D.updated.replaceAll('-', '/'))} 整理。時間以飯店、郵輪、司機最後通知為準。</p>
@@ -254,7 +270,7 @@ function renderFeed() {
   const msgs = S.msgs.slice(-3).reverse();
   const top = [...S.place.values()].map((p) => [p, wanters(p.id)]).filter(([, w]) => w.length).sort((a, b) => b[1].length - a[1].length).slice(0, 5);
   el.innerHTML = `<h3>${I.chat}家人動態 <span class="syncdot${S.synced ? ' ok' : ''}">${S.synced ? '已連線' : S.F ? '離線中' : '連線中'}</span></h3>
-    ${msgs.length ? `<ul>${msgs.map((m) => `<li>${avatar(m.who, true)}<p>${esc(m.text)}<small>${esc(memberName(m.who))}・${m.ms ? localTime(m.ms) : ''}</small></p></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">還沒有人留言。</p>'}
+    ${msgs.length ? `<ul>${msgs.map((m) => `<li>${avatar(m.who, true)}<p>${esc(m.text || (m.pic ? '［傳了一張照片］' : ''))}<small>${esc(memberName(m.who))}・${m.ms ? localTime(m.ms) : ''}</small></p></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">還沒有人留言。</p>'}
     ${top.length ? `<p style="margin:4px 0 0;font-weight:700">大家想去的</p><ul>${top.map(([p, w]) => `<li><span class="avs">${w.map((m) => avatar(m, true)).join('')}</span><p><button class="btn small" type="button" data-open="${p.id}" style="text-align:left">${esc(shortName(p))}</button></p></li>`).join('')}</ul>` : ''}
     <button class="btn solid" type="button" data-chat>${I.chat}打開家人聊天</button>`;
 }
@@ -634,33 +650,89 @@ function openChat(ref) {
     <form class="composer" id="composer">
       <div id="refChip"></div>
       <div class="qp">${QUICK.map((q) => `<button type="button" data-qp>${esc(q)}</button>`).join('')}</div>
-      <div class="row"><textarea class="field" id="msgText" rows="1" maxlength="1000" placeholder="打字…" aria-label="訊息"></textarea>
+      <div class="row"><label class="btn icon-only" aria-label="傳照片">${I.img}<input type="file" accept="image/*" id="picIn" hidden></label>
+        <textarea class="field" id="msgText" rows="1" maxlength="1000" placeholder="打字…" aria-label="訊息"></textarea>
         <button class="btn solid" type="submit" aria-label="送出">${I.send}送出</button></div>
     </form>`, { full: true });
   sheet.parentElement.dataset.kind = 'chat';
   S.chatOpen = true;
+  S.draftPic = null;
   renderRefChip();
   if (ref) $('#msgText').value = '這個要不要去？';
   renderMsgs();
+  $('#picIn').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try { S.draftPic = await shrink(f, 1280, 0.72, 600000); renderRefChip(); }
+    catch { toast('這張照片打不開，換一張試試'); }
+  });
   $('#composer').addEventListener('submit', (e) => { e.preventDefault(); sendMsg(); });
   $('#msgText').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer:fine)').matches) { e.preventDefault(); sendMsg(); } });
   sheet.addEventListener('click', (e) => {
     const q = e.target.closest('[data-qp]');
     if (q) { const t = $('#msgText'); t.value = (t.value ? t.value + ' ' : '') + q.textContent; t.focus(); }
     if (e.target.closest('[data-unref]')) { S.draftRef = null; renderRefChip(); }
+    if (e.target.closest('[data-unpic]')) { S.draftPic = null; renderRefChip(); }
   });
 }
 function renderRefChip() {
   const p = S.draftRef && S.place.get(S.draftRef), el = $('#refChip');
-  if (el) el.innerHTML = p ? `<div class="bub" style="padding:4px"><div class="refc">${thumb(p)}<span>${esc(shortName(p))}</span><button class="x" type="button" data-unref aria-label="不要附上">${I.close}</button></div></div>` : '';
+  if (!el) return;
+  el.innerHTML = (p ? `<div class="bub" style="padding:4px"><div class="refc">${thumb(p)}<span>${esc(shortName(p))}</span><button class="x" type="button" data-unref aria-label="不要附上">${I.close}</button></div></div>` : '')
+    + (S.draftPic ? `<div class="bub" style="padding:4px"><div class="refc"><img src="${S.draftPic}" alt="要傳的照片"><span>附上這張照片</span><button class="x" type="button" data-unpic aria-label="不要附上照片">${I.close}</button></div></div>` : '');
 }
-function sendMsg() {
-  const t = $('#msgText'), text = t.value.trim();
-  if (!text || !ensureDb()) return;
+async function sendMsg() {
+  const t = $('#msgText'), text = t.value.trim(), pic = S.draftPic;
+  if ((!text && !pic) || !ensureDb()) return;
   const F = S.F, doc = { who: S.me, text: text.slice(0, 1000), at: F.serverTimestamp() };
   if (S.draftRef) doc.ref = S.draftRef;
-  F.addDoc(S.col('msgs'), doc).catch(() => toast('沒有送出，檢查網路再試一次'));
-  t.value = ''; S.draftRef = null; renderRefChip();
+  t.value = ''; S.draftRef = null; S.draftPic = null; renderRefChip();
+  try {
+    if (pic) {
+      toast('照片傳送中…');
+      const ref = await F.addDoc(S.col('pics'), { who: S.me, data: pic, at: F.serverTimestamp() });
+      S.pics.set(ref.id, pic);
+      doc.pic = ref.id;
+    }
+    await F.addDoc(S.col('msgs'), doc);
+  } catch { toast('沒有送出，檢查網路再試一次'); }
+}
+
+// 照片先縮小再存（Firestore 一筆最多 1MB），長邊最多 max 像素
+async function shrink(file, max, q, limit) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+    let out = '';
+    for (let size = max, qq = q; size >= 480; size = Math.round(size * 0.8), qq = Math.max(0.5, qq - 0.08)) {
+      const k = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL('image/jpeg', qq);
+      if (out.length <= limit) return out;
+    }
+    if (out.length <= limit) return out;
+    throw new Error('too big');
+  } finally { URL.revokeObjectURL(url); }
+}
+async function loadPics(root = document) {
+  for (const img of $$('img[data-picimg]', root)) {
+    const id = img.dataset.picimg;
+    if (img.src) continue;
+    let data = S.pics.get(id);
+    if (!data && S.F) {
+      try { const d = await S.F.getDoc(S.F.doc(S.col('pics'), id)); data = d.exists() ? d.data().data : ''; S.pics.set(id, data); } catch { data = ''; }
+    }
+    if (data) img.src = data; else img.alt = '照片已收回';
+  }
+}
+function openPic(id) {
+  const data = S.pics.get(id);
+  if (!data) return;
+  const sheet = openLayer(`${head('照片')}<div class="lb-track"><figure><img src="${data}" alt="聊天裡的照片"></figure></div>`, { full: true });
+  sheet.classList.add('lb');
 }
 function renderMsgs() {
   const ol = $('#msgs');
@@ -672,12 +744,14 @@ function renderMsgs() {
     const sep = day && day !== lastDay ? `<li class="daysep">${day}</li>` : '';
     lastDay = day || lastDay;
     const p = m.ref && S.place.get(m.ref), mine = m.who === S.me;
-    return `${sep}<li class="msg${mine ? ' me' : ''}">${avatar(m.who, true)}<div class="bub">${mine ? '' : `<span class="nm">${esc(memberName(m.who))}</span>`}<p>${esc(m.text)}</p>
+    return `${sep}<li class="msg${mine ? ' me' : ''}">${avatar(m.who, true)}<div class="bub">${mine ? '' : `<span class="nm">${esc(memberName(m.who))}</span>`}${m.text ? `<p>${esc(m.text)}</p>` : ''}
+      ${m.pic ? `<button class="picb" type="button" data-pic="${esc(m.pic)}" aria-label="放大照片"><img data-picimg="${esc(m.pic)}" alt="照片"></button>` : ''}
       ${p ? `<button class="refc" type="button" data-open="${p.id}">${thumb(p)}<span>${esc(shortName(p))}</span></button>` : ''}
       <time>${d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '傳送中'}${mine ? ` ・ <button class="linkish" type="button" data-delmsg="${m.id}" style="border:0;background:none;color:inherit;padding:0;font-size:inherit;text-decoration:underline;cursor:pointer">收回</button>` : ''}</time></div></li>`;
   }).join('');
   const body = $('#chatBody');
   body.scrollTop = body.scrollHeight;
+  loadPics(ol).then(() => { body.scrollTop = body.scrollHeight; });
   markRead();
 }
 function markRead() {
@@ -691,6 +765,131 @@ function updateBadge() {
   if (!b) return;
   b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
   document.title = n ? `(${n}) 北越行程` : '北越行程';
+}
+
+// ---------- translate ----------
+// 拍照、說話翻譯用 Firebase AI Logic 的 Gemini；常用句是先翻好的，不用網路
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const PROMPT_IMG = '這是在越南拍的照片（菜單、招牌、價目表或說明）。請把照片裡的越南文翻成繁體中文（台灣用語）。'
+  + '如果是菜單或價目表：每個品項一行，格式「越南文 → 中文　價格」，價格照原本的數字；有牛肉（bò、bê）的品項在那一行最後加上【牛肉】。'
+  + '如果是一般文字：逐段翻譯。最後一行用「重點：」開頭寫一句總結。不要加其他說明。';
+const PROMPT_TO = { vi: '把下面的中文翻成自然、禮貌、口語的越南文（北越用語）。只輸出越南文，不要解釋。\n\n', zh: '把下面的越南文翻成自然口語的繁體中文（台灣用語）。只輸出中文，不要解釋。\n\n' };
+
+async function gemini(model, parts) {
+  if (!S.app) throw new Error('no app');
+  const AI = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
+  S.ai ||= AI.getAI(S.app, { backend: new AI.GoogleAIBackend() });
+  const m = AI.getGenerativeModel(S.ai, { model, generationConfig: { temperature: 0.2 } });
+  const r = await m.generateContent(parts);
+  return r.response.text().trim();
+}
+
+function openTranslate(tab = store.get('nv-trtab', 'cam')) {
+  const sheet = openLayer(`${head('翻譯')}<div class="sh-body tr">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-trtab="cam">${I.cam}拍照翻譯</button>
+      <button type="button" role="tab" data-trtab="talk">${I.mic}說話翻譯</button>
+      <button type="button" role="tab" data-trtab="phr">${I.speak}常用句</button>
+    </div>
+    <section data-trpane="cam">
+      <p>拍越南文的菜單、招牌、說明，翻成中文。菜單上有牛肉的菜會標【牛肉】。</p>
+      <div class="opt-row"><label class="btn solid">${I.cam}拍照<input type="file" accept="image/*" capture="environment" data-trimg hidden></label>
+        <label class="btn">${I.img}從相簿選<input type="file" accept="image/*" data-trimg hidden></label></div>
+      <img class="tr-shot" id="trShot" alt="要翻譯的照片" hidden>
+      <div class="tr-out" id="trImgOut" aria-live="polite"></div>
+    </section>
+    <section data-trpane="talk">
+      <div class="opt-row" role="group" aria-label="翻譯方向">
+        <button class="opt" type="button" data-trdir="vi" aria-pressed="true">我說中文 → 越南文</button>
+        <button class="opt" type="button" data-trdir="zh" aria-pressed="false">對方說越南文 → 中文</button>
+      </div>
+      <textarea class="field" id="trIn" rows="3" placeholder="打字，或按麥克風說話…" aria-label="要翻譯的話"></textarea>
+      <p class="muted" id="trMicHint" style="margin:0;font-size:.9rem" hidden>這個瀏覽器不能直接聽寫：點上面的框框，按鍵盤上的麥克風說話。</p>
+      <div class="opt-row"><button class="btn" type="button" id="trMic">${I.mic}<span>按這裡說話</span></button>
+        <button class="btn solid" type="button" id="trGo">翻譯</button></div>
+      <div class="tr-res" id="trRes" hidden><p class="tr-big" id="trBig"></p>
+        <div class="opt-row"><button class="btn" type="button" id="trSay">${I.speak}唸出來</button><button class="btn" type="button" id="trShow">${I.full}放大給對方看</button></div></div>
+    </section>
+    <section data-trpane="phr">
+      <p>先翻好的句子，沒網路也能用。按「唸」播放越南語，或按句子放大給對方看。</p>
+      ${PHRASES.map(([g, list]) => `<h3 class="tr-h">${g}</h3><ul class="phr">${list.map(([zh, vi]) => `<li><button class="phr-t" type="button" data-bigvi="${esc(vi)}" data-bigzh="${esc(zh)}"><b lang="vi">${esc(vi)}</b><span>${esc(zh)}</span></button><button class="btn small" type="button" data-say="${esc(vi)}" aria-label="唸出來：${esc(zh)}">${I.speak}唸</button></li>`).join('')}</ul>`).join('')}
+    </section>
+    <p class="muted tr-note">拍照、說話翻譯由 Google Gemini 提供，可能翻錯，重要的事請再確認。This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Terms of Service</a> apply.</p>
+  </div>`, { full: true });
+  const showTab = (t) => {
+    store.set('nv-trtab', t);
+    $$('[data-trtab]', sheet).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.trtab === t)));
+    $$('[data-trpane]', sheet).forEach((p) => { p.hidden = p.dataset.trpane !== t; });
+  };
+  showTab(tab);
+  let dir = 'vi', rec = null;
+  if (!SR) { $('#trMic', sheet).hidden = true; $('#trMicHint', sheet).hidden = false; }
+  const result = (text) => {
+    $('#trRes', sheet).hidden = !text;
+    $('#trBig', sheet).textContent = text;
+    $('#trBig', sheet).lang = dir === 'vi' ? 'vi' : 'zh-Hant';
+    $('#trSay', sheet).hidden = dir !== 'vi';
+  };
+  const go = async () => {
+    const text = $('#trIn', sheet).value.trim();
+    if (!text) return;
+    const btn = $('#trGo', sheet);
+    btn.disabled = true; btn.textContent = '翻譯中…';
+    try { result(await gemini('gemini-3.5-flash-lite', [PROMPT_TO[dir] + text])); }
+    catch (e) { console.warn(e); result(''); toast('翻譯失敗（可能沒網路），可以改用「常用句」'); }
+    finally { btn.disabled = false; btn.textContent = '翻譯'; }
+  };
+  sheet.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.trtab) showTab(b.dataset.trtab);
+    else if (b.dataset.trdir) {
+      dir = b.dataset.trdir;
+      $$('[data-trdir]', sheet).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      $('#trIn', sheet).placeholder = dir === 'vi' ? '打中文，或按麥克風說中文…' : '請對方打越南文，或按麥克風說越南文…';
+      result('');
+    } else if (b.id === 'trGo') go();
+    else if (b.id === 'trSay') say($('#trBig', sheet).textContent);
+    else if (b.id === 'trShow') showBig(dir === 'vi' ? $('#trBig', sheet).textContent : '', dir === 'vi' ? $('#trIn', sheet).value : $('#trBig', sheet).textContent);
+    else if (b.id === 'trMic') {
+      if (rec) { rec.stop(); return; }
+      rec = new SR();
+      rec.lang = dir === 'vi' ? 'zh-TW' : 'vi-VN';
+      rec.interimResults = true;
+      const label = $('span', b);
+      label.textContent = '在聽…按這裡停';
+      rec.onresult = (ev) => { $('#trIn', sheet).value = [...ev.results].map((r) => r[0].transcript).join(''); };
+      rec.onerror = () => toast('沒聽到，或沒有麥克風權限');
+      rec.onend = () => { rec = null; label.textContent = '按這裡說話'; if ($('#trIn', sheet).value.trim()) go(); };
+      rec.start();
+    } else if (b.dataset.say) say(b.dataset.say);
+    else if (b.dataset.bigvi) showBig(b.dataset.bigvi, b.dataset.bigzh);
+  });
+  sheet.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!e.target.matches('[data-trimg]') || !f) return;
+    e.target.value = '';
+    const out = $('#trImgOut', sheet), shot = $('#trShot', sheet);
+    out.textContent = '翻譯中，大約 5–15 秒…';
+    try {
+      const data = await shrink(f, 1600, 0.8, 1500000);
+      shot.src = data; shot.hidden = false;
+      const text = await gemini('gemini-3.8-flash', [PROMPT_IMG, { inlineData: { data: data.split(',')[1], mimeType: 'image/jpeg' } }]);
+      out.innerHTML = esc(text).replace(/【牛肉】/g, '<mark class="beef">牛肉</mark>');
+    } catch (err) { console.warn(err); out.textContent = '翻譯失敗（可能沒網路或照片太模糊），再試一次，或改用 Google 翻譯 app 的相機。'; }
+  });
+}
+function say(text) {
+  if (!text || !('speechSynthesis' in window)) return toast('這支手機不能唸，請直接給對方看文字');
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'vi-VN';
+  const v = speechSynthesis.getVoices().find((x) => /^vi/i.test(x.lang));
+  if (v) u.voice = v; else toast('這支手機可能沒有越南語語音，請直接給對方看文字');
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+function showBig(vi, zh) {
+  openLayer(`${head('給對方看')}<div class="addrbig">${vi ? `<p class="vi-big" lang="vi" translate="no">${esc(vi)}</p>` : ''}<p class="${vi ? 'zh' : 'vi-big'}">${esc(zh)}</p></div>`, { full: true });
 }
 
 // ---------- likes ----------
@@ -724,6 +923,12 @@ async function startFirebase() {
     const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
     const [{ initializeApp }, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js')]);
     const app = initializeApp(FB);
+    S.app = app;
+    if (location.hostname === 'youngjchen.github.io') {
+      // 翻譯用的 Gemini 有開 App Check，要先拿到 reCAPTCHA 憑證
+      const AC = await import(base + 'firebase-app-check.js');
+      AC.initializeAppCheck(app, { provider: new AC.ReCaptchaEnterpriseProvider(RECAPTCHA_KEY), isTokenAutoRefreshEnabled: true });
+    }
     let db;
     try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
     catch { db = F.getFirestore(app); }
@@ -807,8 +1012,15 @@ document.addEventListener('click', (e) => {
     const p = S.plans.find((x) => x.id === d.delplan);
     if (p && confirm(`要刪掉「${p.title}」嗎？全家都會看不到。`)) S.F.deleteDoc(S.F.doc(S.col('plans'), p.id)).catch(() => toast('沒有刪成功，再試一次'));
   }
-  else if (d.delmsg) { if (confirm('要收回這則訊息嗎？')) S.F.deleteDoc(S.F.doc(S.col('msgs'), d.delmsg)).catch(() => toast('沒有收回成功')); }
+  else if (d.delmsg) {
+    if (!confirm('要收回這則訊息嗎？')) return;
+    const m = S.msgs.find((x) => x.id === d.delmsg);
+    S.F.deleteDoc(S.F.doc(S.col('msgs'), d.delmsg)).catch(() => toast('沒有收回成功'));
+    if (m?.pic) S.F.deleteDoc(S.F.doc(S.col('pics'), m.pic)).catch(() => {});
+  }
+  else if (d.pic) openPic(d.pic);
   else if (d.lb) openLightbox(d.lb, +d.i);
+  else if ('tr' in d) openTranslate();
   else if ('chat' in d) openChat();
   else if (d.chatref) openChat(d.chatref);
   else if ('share' in d) share();
