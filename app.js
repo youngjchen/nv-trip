@@ -941,6 +941,7 @@ function makeCam(sheet) {
     if (still >= 2 || Date.now() - since > 3000) snap();
   };
   const render = () => {
+    if (!img.complete) { img.onload = render; return; }
     ovl.innerHTML = items.map((x, i) => {
       const [y0, x0, y1, x1] = x.box_2d.map(Number);
       const pad = 4; // 框稍微放大一點，把原本的字蓋乾淨
@@ -959,8 +960,7 @@ function makeCam(sheet) {
   const translate = async (dataUrl) => {
     const my = ++seq;
     items = []; ovl.innerHTML = ''; show('#trList', false);
-    img.src = dataUrl;
-    try { await img.decode(); } catch { /* 有些瀏覽器不支援 decode，直接往下 */ }
+    img.src = dataUrl;   // 不等 decode：有些瀏覽器在背景時 decode 會一直卡住
     show('#shot', true); vid.hidden = true;
     show('#liveSnap', false); show('#liveAgain', mode !== 'off');
     st.textContent = '翻譯中…';
