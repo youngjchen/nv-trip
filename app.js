@@ -53,6 +53,9 @@ const I = {
   img: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/>'),
   full: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
   edit: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
+  pin: svg('<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
+  near: svg('<path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M10 21v-6h4v6"/>'),
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -166,13 +169,80 @@ function linkHTML([type, text, val]) {
 }
 const addrBtn = (k) => `<button class="lnk car" type="button" data-addr="${k}">給司機看地址</button>`;
 
-function evHTML(e, extraTop = '') {
-  const flags = e.flags?.length ? `<p class="flags">${e.flags.map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('')}</p>` : '';
+// 店名：原文＋（中文概述）。行程文字裡的 {id} 會換成可以點的店名，點了跳小浮窗（placePop）。
+const plabel = (id) => S.data.labels?.[id] || [shortName(S.place.get(id) || { name: id }), ''];
+function pn(id) {
+  if (!S.place.has(id)) return esc(id);
+  const [n, z] = plabel(id);
+  return `<button type="button" class="pn" data-pop="${id}">${esc(n)}${z ? `<span class="zh">（${esc(z)}）</span>` : ''}</button>`;
+}
+const sayBtn = (t) => `<button type="button" class="say" data-say="${esc(t)}" lang="vi" translate="no">${esc(t)}${I.speak}</button>`;
+const rich = (s) => String(s).replace(/\{([a-z0-9-]+)\}/g, (_, id) => pn(id)).replace(/\[\[(.+?)\]\]/g, (_, t) => sayBtn(t));
+const byAv = (p) => (p.by || []).map((b) => avatar(b === 'mom' ? 'ma' : b, true)).join('');
+function eatChip(id) {
+  const p = S.place.get(id);
+  if (!p) return '';
+  const [n, z] = plabel(id);
+  const img = p.photos?.[0] ? `<img src="${esc(p.photos[0].t)}" alt="" loading="lazy" decoding="async" crossorigin="anonymous" referrerpolicy="no-referrer">` : `<span class="eat-i">${I[p.group] || I.eat}</span>`;
+  return `<button type="button" class="eat" data-pop="${id}">${img}<span class="eat-t"><b>${esc(n)}</b>${z ? `<small>${esc(z)}</small>` : ''}</span>${byAv(p)}</button>`;
+}
+
+// 一個行程：收起來時只有時間、標題、一行重點；有細節的整列可以點開（WAI-ARIA disclosure，展開用 grid-template-rows 動畫）
+let evSeq = 0;
+function evHTML(e, extraTop = '', { open = false } = {}) {
+  const id = 'evd' + (++evSeq);
+  const pts = (e.p || []).map((x) => `<li>${rich(x)}</li>`).join('');
+  const chipRow = (ids, icon, name) => ids?.length ? `<div class="eats"><span class="eats-l">${icon}${name}</span><div class="eats-r">${ids.map(eatChip).join('')}</div></div>` : '';
+  const eats = chipRow(e.route, I.pin, '路線') + chipRow(e.eat, I.eat, '順路') + chipRow(e.near, I.near, '飯店附近');
   const acts = (e.links?.length || e.addr) ? `<p class="acts">${(e.links || []).map(linkHTML).join('')}${e.addr ? addrBtn(e.addr) : ''}</p>` : '';
-  return `<li class="ev${e.key ? ' key' : ''}" data-ms="${e.ms}">
-    <div class="t${e.w ? ' w' : ''}">${extraTop}${e.ap ? '<span class="ap">約</span>' : ''}${esc(e.t)}${e.small ? `<small>${esc(e.small)}</small>` : ''}</div>
-    <div class="b"><h4>${e.h}</h4>${flags}${(e.p || []).map((p) => `<p>${p}</p>`).join('')}${e.warn ? `<p class="warn">${e.warn}</p>` : ''}${acts}</div>
-  </li>`;
+  const flags = (e.flags || []).map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('');
+  const body = pts || e.warn || eats || acts;
+  const time = `<span class="t${e.w ? ' w' : ''}">${extraTop}${esc(e.t)}${e.small ? `<small>${esc(e.small)}</small>` : ''}</span>`;
+  const main = `<span class="ev-main"><span class="ev-h">${e.h}</span>${e.m ? `<span class="ev-m">${esc(e.m)}</span>` : ''}${flags ? `<span class="ev-flags">${flags}</span>` : ''}</span>`;
+  const side = `<span class="ev-side"><span class="avs">${(e.who || []).map((m) => avatar(m, true)).join('')}</span>${body && !open ? `<span class="chev">${I.chev}</span>` : ''}</span>`;
+  const details = body ? `<div class="ev-d" id="${id}"><div><div class="ev-in">${pts ? `<ul class="pts">${pts}</ul>` : ''}${e.warn ? `<p class="warn">${e.warn}</p>` : ''}${eats}${acts}</div></div></div>` : '';
+  const row = body && !open
+    ? `<button class="ev-row" type="button" data-ev aria-expanded="false" aria-controls="${id}">${time}${main}${side}</button>`
+    : `<div class="ev-row">${time}${main}${side}</div>`;
+  return `<li class="ev${e.key ? ' key' : ''}${open ? ' open' : ''}" data-ms="${e.ms}">${row}${details}</li>`;
+}
+
+// 小浮窗（HTML popover，點外面自動關）：店家簡介、時段提醒
+function openPop(html, anchor) {
+  const el = $('#pop');
+  if (!el?.showPopover) return false;
+  if (el.matches(':popover-open')) el.hidePopover();
+  el.innerHTML = html;
+  el.showPopover();
+  const r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, pad = 12;
+  const floor = innerHeight - ($('.tabbar')?.offsetHeight || 0) - pad;
+  const left = Math.min(Math.max(pad, r.left + r.width / 2 - w / 2), innerWidth - w - pad);
+  let top = r.bottom + 8;
+  if (top + h > floor) top = Math.max(pad, r.top - h - 8);
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  return true;
+}
+const closePop = () => { const el = $('#pop'); if (el?.matches?.(':popover-open')) el.hidePopover(); };
+const firstBit = (s) => String(s || '').split(/[（(；;，]/)[0].trim();
+const AREA = { 'Old Quarter': '老城區', 'Ba Đình–Trúc Bạch': '巴亭、竹帛湖', 'West Lake': '西湖', 'Hoàn Kiếm south': '還劍湖南邊', other: '' };
+function placeWhere(p) {
+  const area = AREA[p.area] ?? String(p.area || '').split(/[，；（(]/)[0];
+  let w = String(p.walk || '').split(/[；;]/)[0].trim();
+  if (/^(走路|Grab|約|步行)/.test(w)) w = '離飯店' + (/^[A-Za-z]/.test(w) ? ' ' : '') + w;
+  return [area, w].filter(Boolean).join('・');
+}
+function placePop(id) {
+  const p = S.place.get(id);
+  if (!p) return '';
+  const [n, z] = plabel(id), w = wanters(id);
+  const facts = [firstBit(p.hours), shortPrice(p.price)].filter(Boolean);
+  const img = p.photos?.[0] ? `<img class="pop-ph" src="${esc(p.photos[0].t)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">` : `<span class="pop-ph">${I[p.group] || I.see}</span>`;
+  return `<div class="pop-h">${img}<div class="pop-t"><b>${esc(n)}</b>${z ? `<span>${esc(z)}</span>` : ''}</div>${byAv(p)}</div>
+    ${p.why ? `<p class="pop-why">${esc(p.why)}</p>` : ''}
+    ${placeWhere(p) ? `<p class="pop-loc">${I.pin}<span>${esc(placeWhere(p))}</span></p>` : ''}
+    ${facts.length ? `<p class="pop-f">${facts.map(esc).join('・')}</p>` : ''}
+    <div class="pop-a">${wantBtn(id)}${linkHTML(['map', '地圖', p.q])}<button class="btn small" type="button" data-open="${id}">詳細</button>${w.length ? `<span class="avs">${w.map((m) => avatar(m, true)).join('')}</span>` : ''}</div>`;
 }
 
 const thumb = (p) => p.photos?.[0]
@@ -190,14 +260,12 @@ const wanters = (id) => (S.likes[id] || []).filter((m) => AV[m]);
 const BY = { mom: '媽媽影片推薦', cy: '純羽提的' };
 const byTags = (p) => (p.by || []).filter((b) => BY[b]).map((b) => `<span class="tag by-${b}">${BY[b]}</span>`).join('');
 function recHTML(p) {
-  const w = wanters(p.id);
+  const w = wanters(p.id), [n, z] = plabel(p.id);
   return `<article class="rec">
     <button class="rec-open" type="button" data-open="${p.id}">${thumb(p)}
-      <div class="rec-txt"><h6>${esc(p.name)}</h6>
-        <div class="tags">${byTags(p)}<span class="tag ${p.who}">${WHO[p.who] || ''}</span>${p.price ? `<span class="tag">${esc(shortPrice(p.price))}</span>` : ''}</div>
-        <p>${esc(p.why)}</p></div>
+      <span class="rec-txt"><b>${esc(n)}</b>${z ? `<small>${esc(z)}</small>` : ''}<span class="rec-why">${esc(p.why)}</span></span>
     </button>
-    <div class="rec-foot">${wantBtn(p.id)}<span class="avs" data-avs="${p.id}">${w.map((m) => avatar(m, true)).join('')}</span><span class="want-n" data-wn="${p.id}">${w.length ? w.length + ' 人想去' : ''}</span></div>
+    <div class="rec-foot">${wantBtn(p.id)}<span class="avs" data-avs="${p.id}">${w.map((m) => avatar(m, true)).join('')}</span><span class="want-n" data-wn="${p.id}">${w.length ? w.length + ' 人想去' : ''}</span>${p.by?.length ? `<span class="rec-by">${byAv(p)}</span>` : ''}</div>
   </article>`;
 }
 
@@ -229,7 +297,8 @@ function render() {
   </main>
   <button class="fab" id="chatFab" type="button" data-chat aria-label="家人聊天">${I.chat}<span class="fab-txt">家人聊天</span><span class="badge" id="badge" hidden></span></button>
   <nav class="tabbar" aria-label="分頁"><ul>${VIEWS.map(([v, name]) => `<li><button type="button" data-view="${v}">${I[v]}${name}</button></li>`).join('')}</ul></nav>
-  <div class="ov" id="ov" hidden></div>`;
+  <div class="ov" id="ov" hidden></div>
+  <div class="pop" id="pop" popover></div>`;
   app.hidden = false;
   document.body.classList.toggle('flow', S.mode === 'flow');
   renderMe();
@@ -262,7 +331,6 @@ function renderNow() {
       <button class="btn wide" type="button" data-tr>${I.tr}翻譯（拍菜單、說話、常用句）</button>
     </div>
     <section class="feed" id="feed"></section>
-    <p class="endnote">${esc(D.updated.replaceAll('-', '/'))} 整理。時間以飯店、郵輪、司機最後通知為準。</p>
   </div>`;
   renderFeed();
 }
@@ -281,8 +349,8 @@ function renderFeed() {
 function renderDays() {
   const D = S.data;
   $('#v-days').innerHTML = `
-  <div class="view-h"><h2>每日行程</h2><p>時間都是越南時間（比台灣慢 1 小時）。點「附近推薦」看好吃好玩的，按「想去」全家都看得到。</p></div>
-  <nav class="daybar" aria-label="選日期">${D.days.map((d) => { const dt = new Date(d.date + 'T00:00:00Z'); return `<button type="button" data-day="${d.id}" aria-pressed="false"><b>${dt.getUTCDate()}</b><small>週${WD[dt.getUTCDay()]}</small></button>`; }).join('')}</nav>
+  <h2 class="sr-only">每日行程</h2>
+  <nav class="daybar" aria-label="選日期">${D.days.map((d) => { const dt = new Date(d.date + 'T00:00:00Z'); return `<button type="button" data-day="${d.id}" aria-pressed="false"><b>${dt.getUTCDate()}</b><small>${WD[dt.getUTCDay()]}</small></button>`; }).join('')}<button class="ib" type="button" data-tip="tz" aria-label="時間說明">${I.info}</button></nav>
   <div id="dayBody"></div>`;
   renderDay();
 }
@@ -290,16 +358,16 @@ function renderDays() {
 function renderDay() {
   const d = S.data.days.find((x) => x.id === S.day);
   const i = S.data.days.indexOf(d);
-  $$('.daybar button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.day === d.id)));
+  $$('.daybar [data-day]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.day === d.id)));
   const extras = recsFor('extra-' + d.city).filter((p) => !d.segs.some((s) => p.segs.includes(s.key)));
   const isToday = ymd(Date.now(), OFF_VN) === d.date;
   $('#dayBody').innerHTML = `
     <header class="dh">
-      <div><span class="dm">${label(d.date).split('（')[0]}</span><span class="dw">週${WD[new Date(d.date + 'T00:00:00Z').getUTCDay()]}・第 ${i + 1} 天</span></div>
-      <div class="dt">${isToday ? '<span class="today-tag">今天</span>' : ''}<h3>${esc(d.title)}</h3><p>${esc(d.stay)}</p></div>
+      <p class="dmeta">${isToday ? '<span class="today-tag">今天</span>' : ''}${label(d.date)}・第 ${i + 1} 天・${esc(d.stay.replace(/^今晚住\s*/, '住 '))}</p>
+      <h3>${esc(d.title)}</h3>
     </header>
     ${d.segs.map(segHTML).join('')}
-    ${extras.length ? `<section class="seg"><h3 class="seg-h"><span>還可以去</span><small>還沒排進行程、但值得去的地方</small></h3>${recBlock('x-' + d.id, extras)}</section>` : ''}`;
+    ${extras.length ? `<section class="seg"><div class="seg-h"><h3>還可以去</h3><span class="sp"></span></div>${recBlock('x-' + d.id, extras)}</section>` : ''}`;
   S.openRecs.forEach((k) => fillRecs(k));
   markEvents();
 }
@@ -307,7 +375,7 @@ function renderDay() {
 function recBlock(key, list) {
   const open = S.openRecs.has(key);
   return `<div class="seg-acts"><button class="recbtn" type="button" data-recs="${key}" aria-expanded="${open}" aria-controls="r-${key}">
-      <span>附近推薦 ${list.length} 個<small>${recSummary(list)}</small></span>${I.chev}</button>
+      ${I.eat}<span>附近推薦</span><b>${list.length}</b>${I.chev}</button>
     <div class="recs" id="r-${key}" ${open ? '' : 'hidden'}></div></div>`;
 }
 
@@ -319,21 +387,21 @@ function segHTML(s) {
   const tip = S.data.segTips[s.key];
   const list = recsFor(s.key);
   return `<section class="seg" data-seg="${s.key}">
-    <h3 class="seg-h"><span>${esc(s.name)}</span><small>${esc(s.sub || '')}</small></h3>
+    <div class="seg-h"><h3>${esc(s.name)}</h3><span class="sp"></span>
+      ${tip ? `<button class="ib" type="button" data-tip="${s.key}" aria-label="${esc(s.name)}的提醒">${I.bulb}</button>` : ''}
+      <button class="ib" type="button" data-add="${s.key}" aria-label="在${esc(s.name)}加行程">${I.plus}</button></div>
     <ol class="tl">${rows.map((r) => r.html).join('')}</ol>
-    ${tip ? `<p class="segtip">${I.bulb}<span>${esc(tip)}</span></p>` : ''}
-    ${list.length ? recBlock(s.key, list) : '<div class="seg-acts"></div>'}
-    <div class="seg-acts" style="margin-top:8px"><button class="addbtn" type="button" data-add="${s.key}">${I.plus}在這個時段加行程</button></div>
+    ${list.length ? recBlock(s.key, list) : ''}
   </section>`;
 }
 
 function planHTML(p) {
   const pl = p.place && S.place.get(p.place);
-  return `<li class="ev fam" data-plan="${p.id}">
-    <div class="t">${p.time ? esc(p.time) : '<span class="ap">家人加的</span>'}</div>
-    <div class="b"><h4>${esc(p.title)}</h4>${p.note ? `<p>${esc(p.note)}</p>` : ''}
-      ${pl ? `<p class="acts"><button class="btn small" type="button" data-open="${pl.id}">看介紹</button></p>` : ''}
-      <p class="fam-by">${avatar(p.who, true)}${esc(memberName(p.who))} 加的<button class="x" type="button" data-delplan="${p.id}" aria-label="刪除這個行程">${I.close}</button></p></div>
+  return `<li class="ev fam open" data-plan="${p.id}">
+    <div class="ev-row"><span class="t">${p.time ? esc(p.time) : '—'}</span>
+      <span class="ev-main"><span class="ev-h">${esc(p.title)}</span>${p.note ? `<span class="ev-m">${esc(p.note)}</span>` : ''}</span>
+      <span class="ev-side">${avatar(p.who, true)}<button class="ib" type="button" data-delplan="${p.id}" aria-label="刪除「${esc(p.title)}」">${I.close}</button></span></div>
+    ${pl ? `<div class="ev-d"><div><div class="ev-in"><p class="acts"><button class="btn small" type="button" data-pop="${pl.id}">${esc(plabel(pl.id)[0])}</button></p></div></div></div>` : ''}
   </li>`;
 }
 
@@ -356,7 +424,7 @@ function renderStay() {
       <div class="addr"><small>地址（給司機看）</small><p lang="vi" translate="no">${esc(D.addrs[h.addr].vi)}</p></div>
       <p class="acts">${h.links.map(linkHTML).join('')}${addrBtn(h.addr)}</p></div></article>`).join('');
   $('#v-stay').innerHTML = `
-  <div class="view-h"><h2>住宿與交通</h2><p>按「給司機看地址」會放大越南文地址，直接拿給司機看。</p></div>
+  <div class="view-h"><h2>住宿與交通</h2></div>
   <div class="stack">
     <article class="card"><div class="in"><h3>航班<span>越捷航空 VietJet・每人託運 20 公斤、手提 7 公斤</span></h3><div>${fl}</div>
       <p class="warn">越南電子簽證：5 人都已核准，單次入境，效期 11/15–11/21。每人印一份自己的帶著。</p></div></article>
@@ -377,7 +445,7 @@ function contactHTML(c) {
 function renderCall() {
   const D = S.data;
   $('#v-call').innerHTML = `
-  <div class="view-h"><h2>電話</h2><p>按「撥打」沒反應的話，按「複製」再到電話裡貼上。</p></div>
+  <div class="view-h"><h2>電話</h2></div>
   <ul class="contacts">${D.contacts.map(contactHTML).join('')}</ul>
   <h3 class="sub-h">緊急狀況</h3>
   <div class="sos">${D.sos.map(([n, t]) => `<a href="tel:${n}"><b>${n}</b><span>${t}</span></a>`).join('')}</div>
@@ -390,14 +458,14 @@ function renderTips() {
   const spa = D.places.filter((p) => p.group === 'spa' && p.city === 'hanoi');
   const packed = store.get('nv-pack-v1', {});
   $('#v-tips').innerHTML = `
-  <div class="view-h"><h2>出門須知</h2><p>家人、吃的、暈船、錢、洗頭按摩、要帶的東西。</p></div>
+  <div class="view-h"><h2>出門須知</h2></div>
   <div class="stack">
     <div class="tip"><h3>我們 5 個人</h3><ul class="members">${D.members.map((m) => `<li>${avatar(m.id)}<div><b>${esc(m.name)} ${esc(m.full)}</b><span class="en">${esc(m.en)}</span><span class="tagrow">${m.tags.map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('')}</span></div></li>`).join('')}</ul></div>
     ${D.tips.map((t) => `<div class="tip"><h3>${t.h}</h3>${t.html}</div>`).join('')}
-    ${spa.length ? `<div class="tip" id="spa"><h3>越式洗頭、按摩</h3><p>老城區、還劍湖附近的 ${spa.length} 家。點進去看套餐和價錢，想去就按「想去」，大家再約時間。空檔：11/16 下午、11/17 中午到傍晚、11/20 下午。</p>
+    ${spa.length ? `<div class="tip" id="spa"><h3>越式洗頭、按摩</h3>
       ${D.spaTips?.length ? `<details><summary>去之前要知道：小費、預約、避開陷阱</summary><ul>${D.spaTips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</div>
       <div class="recs" style="padding:0">${spa.map(recHTML).join('')}</div>` : ''}
-    <div class="tip"><h3>要帶的東西</h3><p class="muted" style="font-size:.95rem">打勾只存在你自己的手機上。</p>
+    <div class="tip"><h3>要帶的東西</h3>
       <ul class="checks">${D.packing.map(([id, t]) => `<li><input type="checkbox" id="pk-${id}" data-pack="${id}"${packed[id] ? ' checked' : ''}><label for="pk-${id}">${esc(t)}</label></li>`).join('')}</ul></div>
   </div>`;
 }
@@ -429,13 +497,13 @@ function tick() {
     const sig = e.ms + '|' + (e.date !== vnDate);
     if (next.dataset.sig !== sig) {
       next.dataset.sig = sig;
-      $('#nowEv').innerHTML = evHTML(e, e.date !== vnDate ? `<span class="nw-date">${label(e.date)}</span>` : '');
+      $('#nowEv').innerHTML = evHTML(e, e.date !== vnDate ? `<span class="nw-date">${label(e.date)}</span>` : '', { open: true });
     }
     go.textContent = `看 ${label(e.date)} 全部行程`;
     go.dataset.godate = e.dayId;
   }
   $('#addrNow').dataset.addr = addrNow(now);
-  $$('.daybar button').forEach((b) => b.classList.toggle('today', S.data.days.find((d) => d.id === b.dataset.day)?.date === vnDate));
+  $$('.daybar [data-day]').forEach((b) => b.classList.toggle('today', S.data.days.find((d) => d.id === b.dataset.day)?.date === vnDate));
   markEvents();
 }
 
@@ -1181,7 +1249,19 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('button, [data-view]');
   if (!t) return;
   const d = t.dataset;
-  if (d.view && t.closest('.tabbar, .quick')) showView(d.view);
+  if (t.closest('#pop') && (d.open || d.addplace || d.chatref)) closePop();
+  if ('ev' in d) {
+    const li = t.closest('.ev'), open = !li.classList.contains('open');
+    li.classList.toggle('open', open);
+    t.setAttribute('aria-expanded', String(open));
+  }
+  else if (d.pop) { if (!openPop(placePop(d.pop), t)) openPlace(d.pop); }
+  else if (d.say) say(d.say);
+  else if (d.tip) {
+    const txt = d.tip === 'tz' ? '行程上的時間都是越南時間，比台灣慢 1 小時。' : S.data.segTips[d.tip];
+    if (txt && !openPop(`<p class="pop-tip">${rich(esc(txt))}</p>`, t)) toast(txt);
+  }
+  else if (d.view && t.closest('.tabbar, .quick')) showView(d.view);
   else if (d.day) selectDay(d.day);
   else if (d.recs) {
     const open = t.getAttribute('aria-expanded') !== 'true';
