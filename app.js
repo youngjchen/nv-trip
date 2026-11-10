@@ -776,14 +776,14 @@ const PROMPT_IMG = '這是在越南拍的照片（菜單、招牌、價目表或
 const PROMPT_TO = { vi: '把下面的中文翻成自然、禮貌、口語的越南文（北越用語）。只輸出越南文，不要解釋。\n\n', zh: '把下面的越南文翻成自然口語的繁體中文（台灣用語）。只輸出中文，不要解釋。\n\n' };
 
 // 模型忙線（500/503/429）時換下一個模型再試
-async function gemini(models, parts) {
+async function gemini(models, parts, timeout = 15000) {
   if (!S.app) throw new Error('no app');
   const AI = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
   S.ai ||= AI.getAI(S.app, { backend: new AI.GoogleAIBackend() });
   let err;
   for (const model of models) {
     try {
-      const m = AI.getGenerativeModel(S.ai, { model, generationConfig: { temperature: 0.2 } });
+      const m = AI.getGenerativeModel(S.ai, { model, generationConfig: { temperature: 0.2 } }, { timeout });
       const r = await m.generateContent(parts);
       return r.response.text().trim();
     } catch (e) { err = e; console.warn(model, e); }
@@ -879,11 +879,11 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     if (!e.target.matches('[data-trimg]') || !f) return;
     e.target.value = '';
     const out = $('#trImgOut', sheet), shot = $('#trShot', sheet);
-    out.textContent = '翻譯中，大約 5–15 秒…';
+    out.textContent = '翻譯中，大約 5–30 秒…';
     try {
       const data = await shrink(f, 1600, 0.8, 1500000);
       shot.src = data; shot.hidden = false;
-      const text = await gemini(M_IMG, [PROMPT_IMG, { inlineData: { data: data.split(',')[1], mimeType: 'image/jpeg' } }]);
+      const text = await gemini(M_IMG, [PROMPT_IMG, { inlineData: { data: data.split(',')[1], mimeType: 'image/jpeg' } }], 30000);
       out.innerHTML = esc(text).replace(/【牛肉】/g, '<mark class="beef">牛肉</mark>');
     } catch (err) { console.warn(err); out.textContent = '翻譯失敗（可能沒網路或照片太模糊），再試一次，或改用 Google 翻譯 app 的相機。'; }
   });
