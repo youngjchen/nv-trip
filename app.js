@@ -791,18 +791,7 @@ async function loadAI() {
   return AI;
 }
 const genCfg = (think) => (think === 0 ? { temperature: 0.1, thinkingConfig: { thinkingBudget: 0 } } : { temperature: 0.1 });
-async function gemini(models, parts, { timeout = 15000 } = {}) {
-  const AI = await loadAI();
-  let err;
-  for (const { model, think } of models) {
-    try {
-      const m = AI.getGenerativeModel(S.ai, { model, generationConfig: genCfg(think) }, { timeout });
-      return (await m.generateContent(parts)).response.text().trim();
-    } catch (e) { err = e; console.warn(model, e); }
-  }
-  throw err;
-}
-// 看圖用的串流版：伺服器有時要排隊 10 秒以上，所以前一個模型 hedge 毫秒還沒開始回，
+// 呼叫 Gemini（串流）：伺服器有時要排隊 10 秒以上，所以前一個模型 hedge 毫秒還沒開始回，
 // 就同時問下一個模型，誰先開始回就用誰；回到一半斷線就先用已經收到的。
 async function geminiStream(models, parts, { onText, hedge = 4000, timeout = 25000 } = {}) {
   const AI = await loadAI();
@@ -904,7 +893,7 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     if (!text) return;
     const btn = $('#trGo', sheet);
     btn.disabled = true; btn.textContent = '翻譯中…';
-    try { result(await gemini(M_TEXT, [PROMPT_TO[dir] + text], { timeout: 12000 })); }
+    try { result((await geminiStream(M_TEXT, [PROMPT_TO[dir] + text], { hedge: 3000, timeout: 12000 })).text); }
     catch (e) { console.warn(e); result(''); toast('翻譯失敗（可能沒網路），可以改用「常用句」'); }
     finally { btn.disabled = false; btn.textContent = '翻譯'; }
   };
