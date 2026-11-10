@@ -779,11 +779,13 @@ const PROMPT_BOX = '找出照片裡每一段越南文（一行或一個品項算
   + 'box_2d 是框住那段越南文的位置，0 到 1000 的相對座標。beef 表示這道菜有牛肉（bò、bê）。沒有文字就輸出 []。';
 const PROMPT_TO = { vi: '把下面的中文翻成自然、禮貌、口語的越南文（北越用語）。只輸出越南文，不要解釋。\n\n', zh: '把下面的越南文翻成自然口語的繁體中文（台灣用語）。只輸出中文，不要解釋。\n\n' };
 // 實測 11/10：3.x flash 預設會「思考」要 10–20 秒，關掉思考約 2 秒；flash-lite 本來就快，但不接受思考設定。
-// 看圖並回傳位置：flash-lite 約 7 秒、3.6-flash 約 10 秒，所以邊收邊畫。
-const M_TEXT = [{ model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.8-flash', think: 0 }];
+// 看圖並回傳位置：通常 3–5 秒（字多的招牌約 10 秒），伺服器忙的時候會更久，所以邊收邊畫、慢了就同時問備用模型。
+// 不用 JSON 模式：比較慢，還會把結果排成別的格式。3.1-flash-lite 看招牌會說沒有字，不能當備用。
+// 免費額度（每個模型每天，越南時間下午 3 點重置）：3.5-flash-lite 500 次；3.6-flash、3.8-flash 只有 20 次，只當備用。
+const M_TEXT = [{ model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.8-flash', think: 0 }];
+const QUOTA_MSG = '今天的免費翻譯次數用完了（越南時間下午 3 點重置）';
 const M_IMG = [{ model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.8-flash', think: 0 }];
 
-// 模型忙線（500/503/429）或太慢時換下一個；onText 有給就邊收邊交出目前收到的全文
 async function loadAI() {
   if (!S.app) throw new Error('no app');
   const AI = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
@@ -796,7 +798,7 @@ const genCfg = (think) => (think === 0 ? { temperature: 0.1, thinkingConfig: { t
 async function geminiStream(models, parts, { onText, hedge = 4000, timeout = 25000 } = {}) {
   const AI = await loadAI();
   return new Promise((resolve, reject) => {
-    let win = -1, next = 0, live = 0, done = false, got = '', err;
+    let win = -1, next = 0, live = 0, done = false, got = '', err, quota = false;
     const end = (fn, v) => { if (done) return; done = true; clearInterval(th); clearTimeout(tt); fn(v); };
     const launch = () => {
       if (done || win >= 0 || next >= models.length) return;
@@ -814,13 +816,14 @@ async function geminiStream(models, parts, { onText, hedge = 4000, timeout = 250
           end(resolve, { text: text.trim() });
         } catch (e) {
           console.warn(model, e); err = e; live--;
+          if (/429/.test(String(e?.message))) quota = true;
           if (win === i) return end(resolve, { text: text.trim(), partial: true });
-          if (win < 0) { if (next < models.length) launch(); else if (!live) end(reject, err); }
+          if (win < 0) { if (next < models.length) launch(); else if (!live) end(reject, Object.assign(err, { quota })); }
         }
       })();
     };
     const th = setInterval(launch, hedge);
-    const tt = setTimeout(() => (got ? end(resolve, { text: got.trim(), partial: true }) : end(reject, err || new Error('timeout'))), timeout + 8000);
+    const tt = setTimeout(() => (got ? end(resolve, { text: got.trim(), partial: true }) : end(reject, Object.assign(err || new Error('timeout'), { quota }))), timeout + 8000);
     launch();
   });
 }
@@ -894,7 +897,7 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     const btn = $('#trGo', sheet);
     btn.disabled = true; btn.textContent = '翻譯中…';
     try { result((await geminiStream(M_TEXT, [PROMPT_TO[dir] + text], { hedge: 3000, timeout: 12000 })).text); }
-    catch (e) { console.warn(e); result(''); toast('翻譯失敗（可能沒網路），可以改用「常用句」'); }
+    catch (e) { console.warn(e); result(''); toast(e?.quota ? QUOTA_MSG + '，先用「常用句」' : '翻譯失敗（可能沒網路），可以改用「常用句」'); }
     finally { btn.disabled = false; btn.textContent = '翻譯'; }
   };
   sheet.addEventListener('click', (e) => {
@@ -999,7 +1002,7 @@ function makeCam(sheet) {
       st.textContent = !items.length ? '沒有看到文字，靠近一點再翻一張' : partial ? '可能沒翻完，可以再翻一張' : '點中文可以放大';
     } catch (e) {
       console.warn(e);
-      if (my === seq) st.textContent = '翻譯失敗（可能沒網路），再翻一張試試';
+      if (my === seq) st.textContent = e?.quota ? QUOTA_MSG : '翻譯失敗（可能沒網路），再翻一張試試';
     }
   };
   const snap = () => {
