@@ -771,29 +771,29 @@ function updateBadge() {
 }
 
 // ---------- translate ----------
-// 拍照、鏡頭、說話翻譯用 Firebase AI Logic 的 Gemini；常用句是先翻好的，不用網路
+// 鏡頭、拍照、說話翻譯用 Firebase AI Logic 的 Gemini；常用句是先翻好的，不用網路
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const PROMPT_IMG = '這是在越南拍的照片（菜單、招牌、價目表或說明）。請把照片裡的越南文翻成繁體中文（台灣用語）。'
-  + '如果是菜單或價目表：每個品項一行，格式「越南文 → 中文　價格」，價格照原本的數字；有牛肉（bò、bê）的品項在那一行最後加上【牛肉】。'
-  + '如果是一般文字：逐段翻譯。不要加其他說明。';
-const PROMPT_LIVE = '這是手機鏡頭對著越南文字的畫面。把畫面裡看得清楚的越南文翻成繁體中文（台灣用語），越短越好。'
-  + '菜單或價目表每個品項一行：「越南文 → 中文　價格」，有牛肉（bò、bê）的那行最後加【牛肉】。'
-  + '如果畫面裡沒有清楚的文字，只回答「（沒有看到文字）」。不要其他說明。';
+// 要模型回傳每段越南文的位置（0–1000 的相對座標），才能把中文蓋在原本的字上
+const PROMPT_BOX = '找出照片裡每一段越南文（一行或一個品項算一段），翻成繁體中文（台灣用語，越短越好，價格照抄）。'
+  + '只輸出 JSON 陣列，每個元素：{"box_2d":[ymin,xmin,ymax,xmax],"vi":"原文","zh":"中文","beef":true或false}。'
+  + 'box_2d 是框住那段越南文的位置，0 到 1000 的相對座標。beef 表示這道菜有牛肉（bò、bê）。沒有文字就輸出 []。';
 const PROMPT_TO = { vi: '把下面的中文翻成自然、禮貌、口語的越南文（北越用語）。只輸出越南文，不要解釋。\n\n', zh: '把下面的越南文翻成自然口語的繁體中文（台灣用語）。只輸出中文，不要解釋。\n\n' };
-// 實測 11/10：3.6-flash 預設會「思考」要 14 秒，關掉思考約 2 秒；flash-lite 本來就快，但不接受思考設定
+// 實測 11/10：3.x flash 預設會「思考」要 10–20 秒，關掉思考約 2 秒；flash-lite 本來就快，但不接受思考設定。
+// 看圖並回傳位置：flash-lite 約 7 秒、3.6-flash 約 10 秒，所以邊收邊畫。
 const M_TEXT = [{ model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.8-flash', think: 0 }];
 const M_IMG = [{ model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.8-flash', think: 0 }];
 
-// 模型忙線（500/503/429）或太慢時換下一個；onText 有給就邊收邊顯示
-async function gemini(models, parts, { timeout = 15000, onText } = {}) {
+// 模型忙線（500/503/429）或太慢時換下一個；onText 有給就邊收邊交出目前收到的全文
+async function gemini(models, parts, { timeout = 15000, onText, json } = {}) {
   if (!S.app) throw new Error('no app');
   const AI = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
   S.ai ||= AI.getAI(S.app, { backend: new AI.GoogleAIBackend() });
   let err;
   for (const { model, think } of models) {
     try {
-      const generationConfig = { temperature: 0.2 };
+      const generationConfig = { temperature: 0.1 };
       if (think === 0) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      if (json) generationConfig.responseMimeType = 'application/json';
       const m = AI.getGenerativeModel(S.ai, { model, generationConfig }, { timeout });
       if (!onText) return (await m.generateContent(parts)).response.text().trim();
       const r = await m.generateContentStream(parts);
@@ -804,7 +804,10 @@ async function gemini(models, parts, { timeout = 15000, onText } = {}) {
   }
   throw err;
 }
-const beefHTML = (t) => esc(t).replace(/【牛肉】/g, '<mark class="beef">牛肉</mark>');
+// 從還沒收完的 JSON 裡，先撈出已經完整的那幾段
+const boxItems = (text) => (text.match(/\{[^{}]*?"box_2d"\s*:\s*\[[^\]]*\][^{}]*?\}/g) || [])
+  .map((s) => { try { return JSON.parse(s); } catch { return null; } })
+  .filter((x) => x && Array.isArray(x.box_2d) && x.box_2d.length === 4 && x.zh);
 
 function openTranslate(tab = store.get('nv-trtab', 'cam')) {
   const sheet = openLayer(`${head('翻譯')}<div class="sh-body tr">
@@ -814,17 +817,21 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
       <button type="button" role="tab" data-trtab="phr">${I.speak}常用句</button>
     </div>
     <section data-trpane="cam">
-      <p>打開鏡頭對著越南文（菜單、招牌、說明），拿穩一下就會自動翻成中文。菜單上有牛肉的菜會標<mark class="beef">牛肉</mark>。</p>
-      <button class="btn solid big" type="button" id="liveOn">${I.cam}打開鏡頭，自動翻譯</button>
+      <p>對準越南文（菜單、招牌、說明），會把中文直接蓋在原本的字上。有牛肉的菜用紅框標出。點中文可以放大。</p>
+      <button class="btn solid big" type="button" id="liveOn">${I.cam}打開鏡頭翻譯</button>
       <div class="live" id="live" hidden>
         <video id="liveVid" playsinline muted autoplay></video>
-        <span class="live-st" id="liveSt">對準文字，拿穩…</span>
+        <div class="shot" id="shot" hidden><img id="shotImg" alt="要翻譯的畫面"><div class="ovl" id="ovl"></div></div>
+        <span class="live-st" id="liveSt">對準文字…</span>
       </div>
-      <div class="opt-row" id="liveCtl" hidden><button class="btn" type="button" id="livePause">暫停</button><button class="btn" type="button" id="liveOff">關掉鏡頭</button></div>
-      <div class="tr-out" id="trImgOut" aria-live="polite"></div>
+      <div class="opt-row" id="liveCtl" hidden>
+        <button class="btn solid" type="button" id="liveSnap">${I.cam}翻譯這個畫面</button>
+        <button class="btn solid" type="button" id="liveAgain" hidden>${I.cam}再翻一張</button>
+        <button class="btn" type="button" id="liveOff">關掉鏡頭</button>
+      </div>
+      <details class="tr-list" id="trList" hidden><summary>看文字清單（字比較大）</summary><div class="tr-out" id="trImgOut"></div></details>
       <div class="opt-row"><label class="btn">${I.cam}拍一張照片<input type="file" accept="image/*" capture="environment" data-trimg hidden></label>
         <label class="btn">${I.img}從相簿選<input type="file" accept="image/*" data-trimg hidden></label></div>
-      <img class="tr-shot" id="trShot" alt="要翻譯的照片" hidden>
     </section>
     <section data-trpane="talk">
       <div class="opt-row" role="group" aria-label="翻譯方向">
@@ -844,14 +851,13 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     </section>
     <p class="muted tr-note">鏡頭、拍照、說話翻譯由 Google Gemini 提供，可能翻錯，重要的事請再確認。This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Terms of Service</a> apply.</p>
   </div>`, { full: true });
-  const out = $('#trImgOut', sheet);
-  const live = makeLive(sheet, out);
-  sheet.parentElement.cleanup = live.stop;
+  const cam = makeCam(sheet);
+  sheet.parentElement.cleanup = cam.stop;
   const showTab = (t) => {
     store.set('nv-trtab', t);
     $$('[data-trtab]', sheet).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.trtab === t)));
     $$('[data-trpane]', sheet).forEach((p) => { p.hidden = p.dataset.trpane !== t; });
-    if (t !== 'cam') live.stop();
+    if (t !== 'cam') cam.stop();
   };
   showTab(tab);
   let dir = 'vi', rec = null;
@@ -875,9 +881,11 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.trtab) showTab(b.dataset.trtab);
-    else if (b.id === 'liveOn') live.start();
-    else if (b.id === 'liveOff') live.stop();
-    else if (b.id === 'livePause') b.textContent = live.togglePause() ? '繼續' : '暫停';
+    else if (b.id === 'liveOn') cam.start();
+    else if (b.id === 'liveSnap') cam.snap();
+    else if (b.id === 'liveAgain') cam.again();
+    else if (b.id === 'liveOff') cam.stop();
+    else if (b.dataset.ovi) cam.zoom(+b.dataset.ovi);
     else if (b.dataset.trdir) {
       dir = b.dataset.trdir;
       $$('[data-trdir]', sheet).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -904,79 +912,116 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     const f = e.target.files?.[0];
     if (!e.target.matches('[data-trimg]') || !f) return;
     e.target.value = '';
-    live.stop();
-    const shot = $('#trShot', sheet);
-    out.textContent = '翻譯中…';
-    try {
-      const data = await shrink(f, 1024, 0.72, 900000);
-      shot.src = data; shot.hidden = false;
-      await gemini(M_IMG, [PROMPT_IMG, { inlineData: { data: data.split(',')[1], mimeType: 'image/jpeg' } }], { timeout: 20000, onText: (t) => { out.innerHTML = beefHTML(t); } });
-    } catch (err) { console.warn(err); out.textContent = '翻譯失敗（可能沒網路或照片太模糊），再試一次，或改用 Google 翻譯 app 的相機。'; }
+    try { cam.photo(await shrink(f, 1024, 0.72, 900000)); }
+    catch { toast('這張照片打不開，換一張試試'); }
   });
 }
 
-// 即時鏡頭：每 0.6 秒看一次畫面，拿穩、而且跟上次翻的不一樣才送去翻（最快 3 秒一次，省免費額度）
-function makeLive(sheet, out) {
-  const vid = $('#liveVid', sheet), st = $('#liveSt', sheet);
-  const tiny = document.createElement('canvas'); tiny.width = 32; tiny.height = 24;
+// 鏡頭翻譯：對準後拿穩約 1 秒（或 3 秒後不管有沒有拿穩）就自動拍下來翻；
+// 翻好後畫面停在那一張、中文蓋在原本的字上，按「再翻一張」回到鏡頭。
+function makeCam(sheet) {
+  const $s = (q) => $(q, sheet);
+  const vid = $s('#liveVid'), shot = $s('#shot'), img = $s('#shotImg'), ovl = $s('#ovl'), st = $s('#liveSt');
+  const tiny = document.createElement('canvas'); tiny.width = 16; tiny.height = 12;
   const tctx = tiny.getContext('2d', { willReadFrequently: true });
-  let stream = null, timer = 0, prev = null, sent = null, still = 0, busy = false, last = 0, paused = false, seq = 0;
+  let stream = null, timer = 0, prev = null, still = 0, since = 0, mode = 'off', seq = 0, items = [];
+  const show = (id, on) => { $s(id).hidden = !on; };
   const sig = () => {
-    tctx.drawImage(vid, 0, 0, 32, 24);
-    const d = tctx.getImageData(0, 0, 32, 24).data, g = new Float32Array(768);
-    for (let i = 0; i < 768; i++) g[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+    tctx.drawImage(vid, 0, 0, 16, 12);
+    const d = tctx.getImageData(0, 0, 16, 12).data, g = new Float32Array(192);
+    for (let i = 0; i < 192; i++) g[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
     return g;
   };
   const diff = (a, b) => { if (!a || !b) return 255; let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
-  const frame = () => {
+  const tick = () => {
+    if (mode !== 'live' || !vid.videoWidth) return;
+    const s = sig();
+    still = diff(s, prev) < 12 ? still + 1 : 0;
+    prev = s;
+    if (still >= 2 || Date.now() - since > 3000) snap();
+  };
+  const render = () => {
+    ovl.innerHTML = items.map((x, i) => {
+      const [y0, x0, y1, x1] = x.box_2d.map(Number);
+      const pad = 4; // 框稍微放大一點，把原本的字蓋乾淨
+      return `<button type="button" class="ob${x.beef ? ' beef' : ''}" data-ovi="${i}" style="left:${(x0 - pad) / 10}%;top:${(y0 - pad) / 10}%;width:${(x1 - x0 + pad * 2) / 10}%;height:${(y1 - y0 + pad * 2) / 10}%"><span>${esc(x.zh)}</span></button>`;
+    }).join('');
+    for (const b of $$('.ob', ovl)) {   // 字的大小跟著框的高度，放不下就縮小
+      const span = b.firstElementChild;
+      let f = Math.max(11, Math.min(28, b.clientHeight * 0.75));
+      span.style.fontSize = f + 'px';
+      while ((span.scrollWidth > b.clientWidth + 1 || span.scrollHeight > b.clientHeight + 1) && f > 10) { f -= 1; span.style.fontSize = f + 'px'; }
+    }
+    const out = $s('#trImgOut');
+    out.innerHTML = items.map((x) => `${esc(x.vi || '')} → ${esc(x.zh)}${x.beef ? ' <mark class="beef">牛肉</mark>' : ''}`).join('\n');
+    show('#trList', items.length > 0);
+  };
+  const translate = async (dataUrl) => {
+    const my = ++seq;
+    items = []; ovl.innerHTML = ''; show('#trList', false);
+    img.src = dataUrl;
+    try { await img.decode(); } catch { /* 有些瀏覽器不支援 decode，直接往下 */ }
+    show('#shot', true); vid.hidden = true;
+    show('#liveSnap', false); show('#liveAgain', mode !== 'off');
+    st.textContent = '翻譯中…';
+    try {
+      const text = await gemini(M_IMG, [PROMPT_BOX, { inlineData: { data: dataUrl.split(',')[1], mimeType: 'image/jpeg' } }], {
+        timeout: 20000, json: true,
+        onText: (t) => { if (my !== seq) return; const got = boxItems(t); if (got.length !== items.length) { items = got; render(); } },
+      });
+      if (my !== seq) return;
+      try { const all = JSON.parse(text); if (Array.isArray(all)) items = all.filter((x) => x && Array.isArray(x.box_2d) && x.zh); } catch { /* 用邊收邊撈的結果 */ }
+      render();
+      st.textContent = items.length ? '點中文可以放大' : '沒有看到文字，靠近一點再翻一張';
+    } catch (e) {
+      console.warn(e);
+      if (my === seq) st.textContent = '翻譯失敗（可能沒網路），再翻一張試試';
+    }
+  };
+  const snap = () => {
+    if (mode !== 'live' || !vid.videoWidth) return;
+    mode = 'shot';
     const k = Math.min(1, 1024 / Math.max(vid.videoWidth, vid.videoHeight));
     const c = document.createElement('canvas'); c.width = Math.round(vid.videoWidth * k); c.height = Math.round(vid.videoHeight * k);
     c.getContext('2d').drawImage(vid, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.7).split(',')[1];
+    vid.pause();
+    translate(c.toDataURL('image/jpeg', 0.72));
   };
-  const tick = async () => {
-    if (!stream || paused || busy || !vid.videoWidth) return;
-    const s = sig();
-    still = diff(s, prev) < 6 ? still + 1 : 0;
-    prev = s;
-    if (still < 2) { st.textContent = '對準文字，拿穩…'; return; }
-    if (diff(s, sent) < 10 || Date.now() - last < 3000) return;
-    busy = true; last = Date.now(); sent = s;
-    const my = ++seq;
-    st.textContent = '翻譯中…';
-    try {
-      await gemini(M_IMG, [PROMPT_LIVE, { inlineData: { data: frame(), mimeType: 'image/jpeg' } }], { timeout: 15000, onText: (t) => { if (my === seq) out.innerHTML = beefHTML(t); } });
-      if (my === seq) st.textContent = '已翻譯，換個地方對準就會再翻';
-    } catch { st.textContent = '翻譯失敗，等一下會再試'; last = Date.now() + 5000; }
-    busy = false;
+  const again = () => {
+    if (!stream) return;
+    seq++; mode = 'live'; since = Date.now(); still = 0; prev = null;
+    show('#shot', false); vid.hidden = false; vid.play();
+    show('#liveSnap', true); show('#liveAgain', false); show('#trList', false);
+    st.textContent = '對準文字，會自動翻譯…';
+  };
+  const stop = () => {
+    clearInterval(timer); timer = 0; seq++; mode = 'off';
+    stream?.getTracks().forEach((t) => t.stop()); stream = null;
+    vid.srcObject = null;
+    show('#live', false); show('#liveCtl', false); show('#liveOn', true);
   };
   return {
+    stop, snap, again,
     async start() {
       if (stream) return;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
       } catch (e) {
         console.warn(e);
-        out.textContent = '打不開鏡頭：請允許使用相機。在 LINE 裡打開的話，請改用 Safari 或 Chrome 開這個網頁，或用下面的「拍一張照片」。';
+        toast('打不開鏡頭：請允許使用相機；在 LINE 裡請改用 Safari 或 Chrome 開，或用「拍一張照片」');
         return;
       }
       vid.srcObject = stream;
-      $('#live', sheet).hidden = false; $('#liveCtl', sheet).hidden = false; $('#liveOn', sheet).hidden = true;
-      paused = false; prev = null; sent = null; still = 0; out.textContent = '';
-      timer = setInterval(tick, 600);
+      show('#live', true); show('#liveCtl', true); show('#liveOn', false);
+      again();
+      timer = setInterval(tick, 500);
     },
-    stop() {
-      clearInterval(timer); timer = 0; seq++;
-      stream?.getTracks().forEach((t) => t.stop()); stream = null;
-      vid.srcObject = null; busy = false;
-      $('#live', sheet).hidden = true; $('#liveCtl', sheet).hidden = true; $('#liveOn', sheet).hidden = false;
+    photo(dataUrl) {   // 拍照或從相簿選：不開鏡頭，直接翻
+      stop();
+      show('#live', true); show('#liveCtl', false); show('#liveOn', true);
+      translate(dataUrl);
     },
-    togglePause() {
-      paused = !paused;
-      st.textContent = paused ? '暫停中' : '對準文字，拿穩…';
-      if (paused) vid.pause(); else vid.play();
-      return paused;
-    },
+    zoom(i) { const x = items[i]; if (x) showPair(x.zh, x.vi); },
   };
 }
 function say(text) {
@@ -987,6 +1032,9 @@ function say(text) {
   if (v) u.voice = v; else toast('這支手機可能沒有越南語語音，請直接給對方看文字');
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
+}
+function showPair(zh, vi) {
+  openLayer(`${head('翻譯')}<div class="addrbig"><p class="vi-big">${esc(zh)}</p>${vi ? `<p class="zh" lang="vi" translate="no">${esc(vi)}</p>` : ''}</div>`, { full: true });
 }
 function showBig(vi, zh) {
   openLayer(`${head('給對方看')}<div class="addrbig">${vi ? `<p class="vi-big" lang="vi" translate="no">${esc(vi)}</p>` : ''}<p class="${vi ? 'zh' : 'vi-big'}">${esc(zh)}</p></div>`, { full: true });
