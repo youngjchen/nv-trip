@@ -186,12 +186,14 @@ function wantBtn(id) {
 }
 const wanters = (id) => (S.likes[id] || []).filter((m) => AV[m]);
 
+const BY = { mom: '媽媽影片推薦', cy: '純羽提的' };
+const byTags = (p) => (p.by || []).filter((b) => BY[b]).map((b) => `<span class="tag by-${b}">${BY[b]}</span>`).join('');
 function recHTML(p) {
   const w = wanters(p.id);
   return `<article class="rec">
     <button class="rec-open" type="button" data-open="${p.id}">${thumb(p)}
       <div class="rec-txt"><h6>${esc(p.name)}</h6>
-        <div class="tags"><span class="tag ${p.who}">${WHO[p.who] || ''}</span>${p.price ? `<span class="tag">${esc(shortPrice(p.price))}</span>` : ''}</div>
+        <div class="tags">${byTags(p)}<span class="tag ${p.who}">${WHO[p.who] || ''}</span>${p.price ? `<span class="tag">${esc(shortPrice(p.price))}</span>` : ''}</div>
         <p>${esc(p.why)}</p></div>
     </button>
     <div class="rec-foot">${wantBtn(p.id)}<span class="avs" data-avs="${p.id}">${w.map((m) => avatar(m, true)).join('')}</span><span class="want-n" data-wn="${p.id}">${w.length ? w.length + ' 人想去' : ''}</span></div>
@@ -514,6 +516,7 @@ function openLayer(html, { full } = {}) {
 function closeTop() {
   const layer = stack.pop();
   if (!layer) return;
+  layer.cleanup?.();
   layer.remove();
   if (layer.dataset.kind === 'chat') S.chatOpen = false;
   if (!stack.length) { $('#ov').hidden = true; document.body.classList.remove('locked'); }
@@ -537,7 +540,7 @@ function openPlace(id) {
     <div class="sh-body">
       ${gal}
       <h3 class="d-name">${esc(p.name)}${p.local ? `<small lang="vi">${esc(p.local)}</small>` : ''}</h3>
-      <div class="tags"><span class="tag ${p.who}">${WHO[p.who] || ''}</span>${p.area ? `<span class="tag">${esc(p.area)}</span>` : ''}</div>
+      <div class="tags">${byTags(p)}<span class="tag ${p.who}">${WHO[p.who] || ''}</span>${p.area ? `<span class="tag">${esc(p.area)}</span>` : ''}</div>
       ${p.why ? `<p>${esc(p.why)}</p>` : ''}
       ${pk}
       ${rows ? `<dl class="dl">${rows}</dl>` : ''}
@@ -768,44 +771,60 @@ function updateBadge() {
 }
 
 // ---------- translate ----------
-// 拍照、說話翻譯用 Firebase AI Logic 的 Gemini；常用句是先翻好的，不用網路
+// 拍照、鏡頭、說話翻譯用 Firebase AI Logic 的 Gemini；常用句是先翻好的，不用網路
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const PROMPT_IMG = '這是在越南拍的照片（菜單、招牌、價目表或說明）。請把照片裡的越南文翻成繁體中文（台灣用語）。'
   + '如果是菜單或價目表：每個品項一行，格式「越南文 → 中文　價格」，價格照原本的數字；有牛肉（bò、bê）的品項在那一行最後加上【牛肉】。'
-  + '如果是一般文字：逐段翻譯。最後一行用「重點：」開頭寫一句總結。不要加其他說明。';
+  + '如果是一般文字：逐段翻譯。不要加其他說明。';
+const PROMPT_LIVE = '這是手機鏡頭對著越南文字的畫面。把畫面裡看得清楚的越南文翻成繁體中文（台灣用語），越短越好。'
+  + '菜單或價目表每個品項一行：「越南文 → 中文　價格」，有牛肉（bò、bê）的那行最後加【牛肉】。'
+  + '如果畫面裡沒有清楚的文字，只回答「（沒有看到文字）」。不要其他說明。';
 const PROMPT_TO = { vi: '把下面的中文翻成自然、禮貌、口語的越南文（北越用語）。只輸出越南文，不要解釋。\n\n', zh: '把下面的越南文翻成自然口語的繁體中文（台灣用語）。只輸出中文，不要解釋。\n\n' };
+// 實測 11/10：3.6-flash 預設會「思考」要 14 秒，關掉思考約 2 秒；flash-lite 本來就快，但不接受思考設定
+const M_TEXT = [{ model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.8-flash', think: 0 }];
+const M_IMG = [{ model: 'gemini-3.5-flash-lite' }, { model: 'gemini-3.6-flash', think: 0 }, { model: 'gemini-3.8-flash', think: 0 }];
 
-// 模型忙線（500/503/429）時換下一個模型再試
-async function gemini(models, parts, timeout = 15000) {
+// 模型忙線（500/503/429）或太慢時換下一個；onText 有給就邊收邊顯示
+async function gemini(models, parts, { timeout = 15000, onText } = {}) {
   if (!S.app) throw new Error('no app');
   const AI = await import(`https://www.gstatic.com/firebasejs/${FB_VER}/firebase-ai.js`);
   S.ai ||= AI.getAI(S.app, { backend: new AI.GoogleAIBackend() });
   let err;
-  for (const model of models) {
+  for (const { model, think } of models) {
     try {
-      const m = AI.getGenerativeModel(S.ai, { model, generationConfig: { temperature: 0.2 } }, { timeout });
-      const r = await m.generateContent(parts);
-      return r.response.text().trim();
+      const generationConfig = { temperature: 0.2 };
+      if (think === 0) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      const m = AI.getGenerativeModel(S.ai, { model, generationConfig }, { timeout });
+      if (!onText) return (await m.generateContent(parts)).response.text().trim();
+      const r = await m.generateContentStream(parts);
+      let text = '';
+      for await (const chunk of r.stream) { text += chunk.text(); onText(text); }
+      return text.trim();
     } catch (e) { err = e; console.warn(model, e); }
   }
   throw err;
 }
-const M_TEXT = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.6-flash'];
-const M_IMG = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+const beefHTML = (t) => esc(t).replace(/【牛肉】/g, '<mark class="beef">牛肉</mark>');
 
 function openTranslate(tab = store.get('nv-trtab', 'cam')) {
   const sheet = openLayer(`${head('翻譯')}<div class="sh-body tr">
     <div class="tabs" role="tablist">
-      <button type="button" role="tab" data-trtab="cam">${I.cam}拍照翻譯</button>
+      <button type="button" role="tab" data-trtab="cam">${I.cam}鏡頭翻譯</button>
       <button type="button" role="tab" data-trtab="talk">${I.mic}說話翻譯</button>
       <button type="button" role="tab" data-trtab="phr">${I.speak}常用句</button>
     </div>
     <section data-trpane="cam">
-      <p>拍越南文的菜單、招牌、說明，翻成中文。菜單上有牛肉的菜會標【牛肉】。</p>
-      <div class="opt-row"><label class="btn solid">${I.cam}拍照<input type="file" accept="image/*" capture="environment" data-trimg hidden></label>
+      <p>打開鏡頭對著越南文（菜單、招牌、說明），拿穩一下就會自動翻成中文。菜單上有牛肉的菜會標<mark class="beef">牛肉</mark>。</p>
+      <button class="btn solid big" type="button" id="liveOn">${I.cam}打開鏡頭，自動翻譯</button>
+      <div class="live" id="live" hidden>
+        <video id="liveVid" playsinline muted autoplay></video>
+        <span class="live-st" id="liveSt">對準文字，拿穩…</span>
+      </div>
+      <div class="opt-row" id="liveCtl" hidden><button class="btn" type="button" id="livePause">暫停</button><button class="btn" type="button" id="liveOff">關掉鏡頭</button></div>
+      <div class="tr-out" id="trImgOut" aria-live="polite"></div>
+      <div class="opt-row"><label class="btn">${I.cam}拍一張照片<input type="file" accept="image/*" capture="environment" data-trimg hidden></label>
         <label class="btn">${I.img}從相簿選<input type="file" accept="image/*" data-trimg hidden></label></div>
       <img class="tr-shot" id="trShot" alt="要翻譯的照片" hidden>
-      <div class="tr-out" id="trImgOut" aria-live="polite"></div>
     </section>
     <section data-trpane="talk">
       <div class="opt-row" role="group" aria-label="翻譯方向">
@@ -823,12 +842,16 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
       <p>先翻好的句子，沒網路也能用。按「唸」播放越南語，或按句子放大給對方看。</p>
       ${PHRASES.map(([g, list]) => `<h3 class="tr-h">${g}</h3><ul class="phr">${list.map(([zh, vi]) => `<li><button class="phr-t" type="button" data-bigvi="${esc(vi)}" data-bigzh="${esc(zh)}"><b lang="vi">${esc(vi)}</b><span>${esc(zh)}</span></button><button class="btn small" type="button" data-say="${esc(vi)}" aria-label="唸出來：${esc(zh)}">${I.speak}唸</button></li>`).join('')}</ul>`).join('')}
     </section>
-    <p class="muted tr-note">拍照、說話翻譯由 Google Gemini 提供，可能翻錯，重要的事請再確認。This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Terms of Service</a> apply.</p>
+    <p class="muted tr-note">鏡頭、拍照、說話翻譯由 Google Gemini 提供，可能翻錯，重要的事請再確認。This site is protected by reCAPTCHA and the Google <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Terms of Service</a> apply.</p>
   </div>`, { full: true });
+  const out = $('#trImgOut', sheet);
+  const live = makeLive(sheet, out);
+  sheet.parentElement.cleanup = live.stop;
   const showTab = (t) => {
     store.set('nv-trtab', t);
     $$('[data-trtab]', sheet).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.trtab === t)));
     $$('[data-trpane]', sheet).forEach((p) => { p.hidden = p.dataset.trpane !== t; });
+    if (t !== 'cam') live.stop();
   };
   showTab(tab);
   let dir = 'vi', rec = null;
@@ -844,7 +867,7 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     if (!text) return;
     const btn = $('#trGo', sheet);
     btn.disabled = true; btn.textContent = '翻譯中…';
-    try { result(await gemini(M_TEXT, [PROMPT_TO[dir] + text])); }
+    try { result(await gemini(M_TEXT, [PROMPT_TO[dir] + text], { timeout: 12000 })); }
     catch (e) { console.warn(e); result(''); toast('翻譯失敗（可能沒網路），可以改用「常用句」'); }
     finally { btn.disabled = false; btn.textContent = '翻譯'; }
   };
@@ -852,6 +875,9 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.trtab) showTab(b.dataset.trtab);
+    else if (b.id === 'liveOn') live.start();
+    else if (b.id === 'liveOff') live.stop();
+    else if (b.id === 'livePause') b.textContent = live.togglePause() ? '繼續' : '暫停';
     else if (b.dataset.trdir) {
       dir = b.dataset.trdir;
       $$('[data-trdir]', sheet).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -878,15 +904,80 @@ function openTranslate(tab = store.get('nv-trtab', 'cam')) {
     const f = e.target.files?.[0];
     if (!e.target.matches('[data-trimg]') || !f) return;
     e.target.value = '';
-    const out = $('#trImgOut', sheet), shot = $('#trShot', sheet);
-    out.textContent = '翻譯中，大約 5–30 秒…';
+    live.stop();
+    const shot = $('#trShot', sheet);
+    out.textContent = '翻譯中…';
     try {
-      const data = await shrink(f, 1600, 0.8, 1500000);
+      const data = await shrink(f, 1024, 0.72, 900000);
       shot.src = data; shot.hidden = false;
-      const text = await gemini(M_IMG, [PROMPT_IMG, { inlineData: { data: data.split(',')[1], mimeType: 'image/jpeg' } }], 30000);
-      out.innerHTML = esc(text).replace(/【牛肉】/g, '<mark class="beef">牛肉</mark>');
+      await gemini(M_IMG, [PROMPT_IMG, { inlineData: { data: data.split(',')[1], mimeType: 'image/jpeg' } }], { timeout: 20000, onText: (t) => { out.innerHTML = beefHTML(t); } });
     } catch (err) { console.warn(err); out.textContent = '翻譯失敗（可能沒網路或照片太模糊），再試一次，或改用 Google 翻譯 app 的相機。'; }
   });
+}
+
+// 即時鏡頭：每 0.6 秒看一次畫面，拿穩、而且跟上次翻的不一樣才送去翻（最快 3 秒一次，省免費額度）
+function makeLive(sheet, out) {
+  const vid = $('#liveVid', sheet), st = $('#liveSt', sheet);
+  const tiny = document.createElement('canvas'); tiny.width = 32; tiny.height = 24;
+  const tctx = tiny.getContext('2d', { willReadFrequently: true });
+  let stream = null, timer = 0, prev = null, sent = null, still = 0, busy = false, last = 0, paused = false, seq = 0;
+  const sig = () => {
+    tctx.drawImage(vid, 0, 0, 32, 24);
+    const d = tctx.getImageData(0, 0, 32, 24).data, g = new Float32Array(768);
+    for (let i = 0; i < 768; i++) g[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+    return g;
+  };
+  const diff = (a, b) => { if (!a || !b) return 255; let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
+  const frame = () => {
+    const k = Math.min(1, 1024 / Math.max(vid.videoWidth, vid.videoHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(vid.videoWidth * k); c.height = Math.round(vid.videoHeight * k);
+    c.getContext('2d').drawImage(vid, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.7).split(',')[1];
+  };
+  const tick = async () => {
+    if (!stream || paused || busy || !vid.videoWidth) return;
+    const s = sig();
+    still = diff(s, prev) < 6 ? still + 1 : 0;
+    prev = s;
+    if (still < 2) { st.textContent = '對準文字，拿穩…'; return; }
+    if (diff(s, sent) < 10 || Date.now() - last < 3000) return;
+    busy = true; last = Date.now(); sent = s;
+    const my = ++seq;
+    st.textContent = '翻譯中…';
+    try {
+      await gemini(M_IMG, [PROMPT_LIVE, { inlineData: { data: frame(), mimeType: 'image/jpeg' } }], { timeout: 15000, onText: (t) => { if (my === seq) out.innerHTML = beefHTML(t); } });
+      if (my === seq) st.textContent = '已翻譯，換個地方對準就會再翻';
+    } catch { st.textContent = '翻譯失敗，等一下會再試'; last = Date.now() + 5000; }
+    busy = false;
+  };
+  return {
+    async start() {
+      if (stream) return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
+      } catch (e) {
+        console.warn(e);
+        out.textContent = '打不開鏡頭：請允許使用相機。在 LINE 裡打開的話，請改用 Safari 或 Chrome 開這個網頁，或用下面的「拍一張照片」。';
+        return;
+      }
+      vid.srcObject = stream;
+      $('#live', sheet).hidden = false; $('#liveCtl', sheet).hidden = false; $('#liveOn', sheet).hidden = true;
+      paused = false; prev = null; sent = null; still = 0; out.textContent = '';
+      timer = setInterval(tick, 600);
+    },
+    stop() {
+      clearInterval(timer); timer = 0; seq++;
+      stream?.getTracks().forEach((t) => t.stop()); stream = null;
+      vid.srcObject = null; busy = false;
+      $('#live', sheet).hidden = true; $('#liveCtl', sheet).hidden = true; $('#liveOn', sheet).hidden = false;
+    },
+    togglePause() {
+      paused = !paused;
+      st.textContent = paused ? '暫停中' : '對準文字，拿穩…';
+      if (paused) vid.pause(); else vid.play();
+      return paused;
+    },
+  };
 }
 function say(text) {
   if (!text || !('speechSynthesis' in window)) return toast('這支手機不能唸，請直接給對方看文字');
