@@ -52,6 +52,7 @@ const I = {
   speak: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
   img: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/>'),
   full: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+  edit: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -518,7 +519,7 @@ function closeTop() {
   if (!layer) return;
   layer.cleanup?.();
   layer.remove();
-  if (layer.dataset.kind === 'chat') S.chatOpen = false;
+  if (layer.dataset.kind === 'chat') { S.chatOpen = false; S.editing = null; }
   if (!stack.length) { $('#ov').hidden = true; document.body.classList.remove('locked'); }
 }
 const requestClose = () => history.back();
@@ -677,16 +678,27 @@ function openChat(ref) {
     if (q) { const t = $('#msgText'); t.value = (t.value ? t.value + ' ' : '') + q.textContent; t.focus(); }
     if (e.target.closest('[data-unref]')) { S.draftRef = null; renderRefChip(); }
     if (e.target.closest('[data-unpic]')) { S.draftPic = null; renderRefChip(); }
+    if (e.target.closest('[data-unedit]')) { S.editing = null; $('#msgText').value = ''; renderRefChip(); }
   });
 }
 function renderRefChip() {
   const p = S.draftRef && S.place.get(S.draftRef), el = $('#refChip');
   if (!el) return;
-  el.innerHTML = (p ? `<div class="bub" style="padding:4px"><div class="refc">${thumb(p)}<span>${esc(shortName(p))}</span><button class="x" type="button" data-unref aria-label="不要附上">${I.close}</button></div></div>` : '')
+  el.innerHTML = (S.editing ? `<div class="editing">${I.edit || ''}<span>編輯訊息</span><button class="x" type="button" data-unedit aria-label="取消編輯">${I.close}</button></div>` : '') + (p ? `<div class="bub" style="padding:4px"><div class="refc">${thumb(p)}<span>${esc(shortName(p))}</span><button class="x" type="button" data-unref aria-label="不要附上">${I.close}</button></div></div>` : '')
     + (S.draftPic ? `<div class="bub" style="padding:4px"><div class="refc"><img src="${S.draftPic}" alt="要傳的照片"><span>附上這張照片</span><button class="x" type="button" data-unpic aria-label="不要附上照片">${I.close}</button></div></div>` : '');
 }
 async function sendMsg() {
   const t = $('#msgText'), text = t.value.trim(), pic = S.draftPic;
+  if (S.editing) {   // 編輯自己的訊息：只改文字，Firestore 規則只允許動 text 和 edited
+    const m = S.msgs.find((x) => x.id === S.editing);
+    if (!m || !ensureDb()) return;
+    if (!text && !m.pic) { toast('訊息不能是空的，要刪掉請按「收回」'); return; }
+    const id = S.editing;
+    S.editing = null; t.value = ''; renderRefChip();
+    if (text === m.text) return;
+    S.F.updateDoc(S.F.doc(S.col('msgs'), id), { text: text.slice(0, 1000), edited: S.F.serverTimestamp() }).catch(() => toast('沒有改成功，檢查網路再試一次'));
+    return;
+  }
   if ((!text && !pic) || !ensureDb()) return;
   const F = S.F, doc = { who: S.me, text: text.slice(0, 1000), at: F.serverTimestamp() };
   if (S.draftRef) doc.ref = S.draftRef;
@@ -750,7 +762,7 @@ function renderMsgs() {
     return `${sep}<li class="msg${mine ? ' me' : ''}">${avatar(m.who, true)}<div class="bub">${mine ? '' : `<span class="nm">${esc(memberName(m.who))}</span>`}${m.text ? `<p>${esc(m.text)}</p>` : ''}
       ${m.pic ? `<button class="picb" type="button" data-pic="${esc(m.pic)}" aria-label="放大照片"><img data-picimg="${esc(m.pic)}" alt="照片"></button>` : ''}
       ${p ? `<button class="refc" type="button" data-open="${p.id}">${thumb(p)}<span>${esc(shortName(p))}</span></button>` : ''}
-      <time>${d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '傳送中'}${mine ? ` ・ <button class="linkish" type="button" data-delmsg="${m.id}" style="border:0;background:none;color:inherit;padding:0;font-size:inherit;text-decoration:underline;cursor:pointer">收回</button>` : ''}</time></div></li>`;
+      <time>${d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '傳送中'}${m.edited ? '・已編輯' : ''}${mine ? `<button class="mact" type="button" data-editmsg="${m.id}">編輯</button><button class="mact" type="button" data-delmsg="${m.id}">收回</button>` : ''}</time></div></li>`;
   }).join('');
   const body = $('#chatBody');
   body.scrollTop = body.scrollHeight;
@@ -1187,6 +1199,13 @@ document.addEventListener('click', (e) => {
   else if (d.delplan) {
     const p = S.plans.find((x) => x.id === d.delplan);
     if (p && confirm(`要刪掉「${p.title}」嗎？全家都會看不到。`)) S.F.deleteDoc(S.F.doc(S.col('plans'), p.id)).catch(() => toast('沒有刪成功，再試一次'));
+  }
+  else if (d.editmsg) {
+    const m = S.msgs.find((x) => x.id === d.editmsg), box = $('#msgText');
+    if (!m || !box) return;
+    S.editing = m.id; S.draftRef = null; S.draftPic = null;
+    box.value = m.text || ''; renderRefChip();
+    box.focus(); box.setSelectionRange(box.value.length, box.value.length);
   }
   else if (d.delmsg) {
     if (!confirm('要收回這則訊息嗎？')) return;
