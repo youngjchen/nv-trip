@@ -410,6 +410,13 @@ function recBlock(key, list) {
     <div class="recs" id="r-${key}" ${open ? '' : 'hidden'}></div></div>`;
 }
 
+// 時段提醒的小燈泡：還沒點開過、或是那一天，就一閃一閃
+const tipSeen = new Set(store.get('nv-tipseen', []));
+function tipHot(key) {
+  const day = S.data.days.find((d) => d.id === key.split('-')[0]);
+  return !tipSeen.has(key) || day?.date === ymd(Date.now(), OFF_VN);
+}
+
 function segHTML(s) {
   const plans = S.plans.filter((p) => p.seg === s.key).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1);
   const rows = s.ev.map((e) => ({ k: e.at, html: evHTML(e) }));
@@ -419,8 +426,8 @@ function segHTML(s) {
   const list = recsFor(s.key);
   return `<section class="seg" data-seg="${s.key}">
     <div class="seg-h"><h3>${esc(s.name)}</h3><span class="sp"></span>
+      ${tip ? `<button class="ib tipb${tipHot(s.key) ? ' hot' : ''}" type="button" data-tip="${s.key}" aria-label="${esc(s.name)}的提醒">${I.bulb}</button>` : ''}
       <button class="ib" type="button" data-add="${s.key}" aria-label="在${esc(s.name)}加行程">${I.plus}</button></div>
-    ${tip ? `<p class="seg-tip">${I.bulb}<span>${rich(esc(tip))}</span></p>` : ''}
     <ol class="tl">${rows.map((r) => r.html).join('')}</ol>
     ${list.length ? recBlock(s.key, list) : ''}
   </section>`;
@@ -1325,6 +1332,7 @@ document.addEventListener('click', (e) => {
   }
   else if (d.tip) {
     const txt = d.tip === 'tz' ? '行程上的時間都是越南時間，比台灣慢 1 小時。' : S.data.segTips[d.tip];
+    if (d.tip !== 'tz' && !tipSeen.has(d.tip)) { tipSeen.add(d.tip); store.set('nv-tipseen', [...tipSeen]); t.classList.toggle('hot', tipHot(d.tip)); }
     if (txt && !openPop(`<p class="pop-tip">${rich(esc(txt))}</p>`, t)) toast(txt);
   }
   else if (d.view && t.closest('.tabbar, .quick')) showView(d.view);
