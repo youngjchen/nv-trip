@@ -222,7 +222,8 @@ function evHTML(e, extraTop = '', { open = false } = {}) {
   const pts = (e.p || []).map((x) => `<li>${rich(x)}</li>`).join('');
   const chipRow = (ids, icon, name) => ids?.length ? `<div class="eats"><span class="eats-l">${icon}${name}</span><div class="eats-r">${ids.map(eatChip).join('')}</div></div>` : '';
   const eats = chipRow(e.route, I.pin, '路線') + chipRow(e.eat, I.eat, '順路') + chipRow(e.near, I.near, '飯店附近');
-  const firstId = (e.p || []).join(' ').match(/\{([a-z0-9-]+)\}/)?.[1];
+  // 叫 Grab 的目的地：預設是條列裡第一個店名，行程可以用 grab: 'id' 指定
+  const firstId = e.grab || (e.p || []).join(' ').match(/\{([a-z0-9-]+)\}/)?.[1];
   const grab = e.addr ? grabBtn(addrText(e.addr)) : (e.links?.length && S.place.has(firstId) ? grabBtn(grabDest(S.place.get(firstId))) : '');
   const acts = (e.links?.length || e.addr) ? `<p class="acts">${(e.links || []).map(linkHTML).join('')}${grab}${e.addr ? addrBtn(e.addr) : ''}</p>` : '';
   const flags = (e.flags || []).map(([c, t]) => `<span class="flag ${c}">${t}</span>`).join('');
