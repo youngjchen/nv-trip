@@ -419,8 +419,8 @@ function segHTML(s) {
   const list = recsFor(s.key);
   return `<section class="seg" data-seg="${s.key}">
     <div class="seg-h"><h3>${esc(s.name)}</h3><span class="sp"></span>
-      ${tip ? `<button class="ib" type="button" data-tip="${s.key}" aria-label="${esc(s.name)}的提醒">${I.bulb}</button>` : ''}
       <button class="ib" type="button" data-add="${s.key}" aria-label="在${esc(s.name)}加行程">${I.plus}</button></div>
+    ${tip ? `<p class="seg-tip">${I.bulb}<span>${rich(esc(tip))}</span></p>` : ''}
     <ol class="tl">${rows.map((r) => r.html).join('')}</ol>
     ${list.length ? recBlock(s.key, list) : ''}
   </section>`;

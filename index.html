@@ -187,6 +187,10 @@ body.flow .view { padding-bottom: 28px; border-bottom: 1px solid var(--line); ma
 .seg-h { display: flex; align-items: center; min-height: 44px; }
 .seg-h h3 { margin: 0; font-size: .9rem; font-weight: 700; letter-spacing: .08em; color: var(--jade); }
 .seg-h .sp { flex: 1; height: 1px; margin: 0 6px 0 12px; background: var(--line); }
+/* 時段提醒：直接顯示，不用點 */
+.seg-tip { display: flex; gap: 10px; align-items: flex-start; margin: 2px 0 10px; padding: 10px 14px; border-radius: 12px;
+  background: var(--amber-soft); border-left: 4px solid var(--amber); color: var(--ink); font-size: 1rem; font-weight: 600; line-height: 1.5; }
+.seg-tip svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: var(--amber); }
 
 /* ---------- events：收起來一行標題＋一行重點，點開看細節 ---------- */
 .tl { list-style: none; margin: 0; padding: 0; }
@@ -635,6 +639,6 @@ mark.beef { background: var(--red); color: var(--on-accent); border-radius: 6px;
 </div>
 <div id="app" hidden></div>
 <noscript><p style="padding:24px">這個網頁需要開啟 JavaScript。</p></noscript>
-<script type="module" src="app.js?v=7629ae82"></script>
+<script type="module" src="app.js?v=3516c5a7"></script>
 </body>
 </html>
