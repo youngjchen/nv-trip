@@ -360,6 +360,7 @@ function renderNow() {
       <button class="btn" type="button" id="addrNow">${I.stop}給司機看地址</button>
       <button class="btn" type="button" data-view="call">${I.call}打電話</button>
       <button class="btn wide" type="button" data-tr>${I.tr}翻譯（拍菜單、說話、常用句）</button>
+      ${qrLive() ? `<button class="btn wide" type="button" data-qr>${I.ticket}入境申報 QR code</button>` : ''}
     </div>
     <section class="feed" id="feed"></section>
   </div>`;
@@ -480,7 +481,8 @@ function renderStay() {
   $('#v-stay').innerHTML = `
   <h2 class="sr-only">住宿與交通</h2>
   ${sectH('航班')}
-  <div class="flights">${fl}<p class="visa">${I.check}<span>5 人電子簽證都已核准（11/15–11/21 單次入境），每人印一份自己的帶著</span></p></div>
+  <div class="flights">${fl}<p class="visa">${I.check}<span>5 人電子簽證都已核准（11/15–11/21 單次入境），每人印一份自己的帶著</span></p>
+    ${qrLive() ? `<button class="btn qr-open" type="button" data-qr>${I.ticket}入境申報 QR code</button>` : ''}</div>
   ${sectH('住宿')}
   <div class="stack">${hotels}</div>
   ${sectH('包車')}
@@ -710,6 +712,56 @@ function openAddr(k) {
     <p class="vi-big" lang="vi" translate="no">${esc(a.vi)}</p>
     <p class="zh">請載我到這個地址：${esc(a.zh)}</p>
     <p class="acts" style="justify-content:center">${grabBtn(addrText(k))}</p></div>`, { full: true });
+}
+
+// 入境申報 QR code：放在 qr.bin（家庭金鑰一層），每個人的那份再用自己的身分證字號（PBKDF2）加密，輸入對了才解得開。
+// 解開的圖只放在這個畫面（不存手機），關掉就要再輸入一次；越南時間 11/16 起不顯示，qr.bin 也會從 GitHub 刪掉。
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const qrLive = () => !!S.data?.arrivalQr && Date.now() < Date.parse(S.data.arrivalQr.until);
+async function qrFile() {
+  const res = await fetch('qr.bin', { cache: 'no-cache' });
+  if (!res.ok) throw new Error('qr.bin ' + res.status);
+  return decrypt(new Uint8Array(await res.arrayBuffer()), S.key);
+}
+async function qrDecrypt(e, id, iter) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(id), 'PBKDF2', false, ['deriveKey']);
+  const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(e.s), iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(e.i) }, k, b64(e.c)));
+}
+function openQr() {
+  if (!qrLive()) return toast('入境申報 QR code 已經從網站刪掉了');
+  if (!ensureMe(openQr)) return;
+  const share = S.data.arrivalQr.share[S.me], name = esc(memberName(S.me));
+  if (!share) return toast('找不到你的 QR code');
+  const sheet = openLayer(`${head('入境申報 QR code')}<div class="sh-body"><form class="form" id="qrForm" autocomplete="off">
+      <label>${name}的身分證字號
+        <input class="field" name="nid" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="12" required placeholder="英文字母＋9 個數字"></label>
+      <p class="qr-err" role="alert" hidden></p>
+      <button class="btn solid" type="submit">打開</button>
+      <button class="btn small" type="button" data-qrme>不是${name}？換人</button>
+    </form></div>`);
+  const form = $('#qrForm', sheet), err = $('.qr-err', sheet), go = $('button[type=submit]', form);
+  const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = '打開'; };
+  sheet.addEventListener('click', (ev) => {
+    if (!ev.target.closest('[data-qrme]')) return;
+    requestClose();
+    setTimeout(() => openMe(openQr), 60);
+  });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const id = form.elements.nid.value.replace(/\s+/g, '').toUpperCase();
+    if (!/^[A-Z][0-9]{9}$/.test(id)) return fail('身分證字號是 1 個英文字母加 9 個數字');
+    err.hidden = true; go.disabled = true; go.textContent = '打開中…';
+    let Q, png;
+    try { Q = await qrFile(); } catch { return fail(navigator.onLine === false ? '現在沒有網路，連上網路再試一次' : 'QR code 已經從網站刪掉了'); }
+    try { png = await qrDecrypt(Q.entries[S.me], id, Q.iter); } catch { return fail('字號不對，再確認一次'); }
+    const url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+    sheet.parentElement.cleanup = () => URL.revokeObjectURL(url);
+    const all = share.map(memberName);
+    $('.sh-body', sheet).innerHTML = `<p class="warn qr-warn" role="alert"><b>${I.cam}請馬上截圖存到相簿</b>關掉這個畫面就要再輸入一次身分證字號，11/16 起網站會刪掉。</p>
+      <div class="qr-box"><img src="${url}" alt="${name}的入境申報 QR code"></div>
+      <p class="qr-cap">${all.length > 1 ? `${esc(all.join('、'))} ${all.length} 人共用這一張` : `${name}自己的`}・入境時給海關看</p>`;
+  });
 }
 
 function openMe(after) {
@@ -1348,6 +1400,7 @@ document.addEventListener('click', (e) => {
   else if (d.add) openAdd(d.add);
   else if (d.addplace) openAdd(null, d.addplace);
   else if (d.addr) openAddr(d.addr);
+  else if ('qr' in d) openQr();
   else if (d.copy) copy(d.copy, t);
   else if ('close' in d) requestClose();
   else if (d.delplan) {
