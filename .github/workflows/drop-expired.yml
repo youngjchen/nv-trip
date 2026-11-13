@@ -1,0 +1,31 @@
+# 憑證加密檔 v/<到期時間 UTC>-<代號>.bin：時間到就自動刪掉，再請 GitHub Pages 重新發布。
+# 到期都是越南時間隔天 00:00（＝UTC 17:00），所以 11/14–11/21 每天 UTC 17:05 跑；
+# 另外每 6 小時補查一次，排程延誤或失敗也會補刪。沒到期的檔案手動執行也不會刪。
+name: drop expired vouchers
+on:
+  schedule:
+    - cron: '5 17 14-21 11 *'
+    - cron: '17 */6 15-25 11 *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+jobs:
+  drop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: delete expired voucher files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          now=$(date -u +%Y%m%dT%H%M)
+          for f in v/*.bin; do
+            [ -f "$f" ] || continue
+            s=$(basename "$f" | cut -d- -f1)
+            if [[ ! "$s" > "$now" ]]; then git rm -q "$f"; echo "drop $f (until $s)"; fi
+          done
+          if git diff --cached --quiet; then echo "nothing expired (now $now)"; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "刪掉到期的憑證（越南時間 $(TZ=Asia/Ho_Chi_Minh date +%m/%d)）"
+          git push
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds" || echo 'pages build request failed (the push should still trigger a build)'

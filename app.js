@@ -128,6 +128,8 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   startFirebase();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  dropExpiredCache().catch(() => {});
+  setTimeout(prefetchVouchers, 2500);
 }
 
 function showLock(err) {
@@ -344,6 +346,7 @@ function renderMe() {
   const b = $('#meBtn');
   b.innerHTML = S.me ? `${avatar(S.me)}${esc(memberName(S.me))}` : `<span class="av">?</span>我是誰`;
   b.setAttribute('aria-label', S.me ? `目前是${memberName(S.me)}，按這裡換人` : '選擇你是誰');
+  renderVouchers();
 }
 
 function renderNow() {
@@ -361,10 +364,11 @@ function renderNow() {
       <button class="btn" type="button" id="addrNow">${I.stop}給司機看地址</button>
       <button class="btn" type="button" data-view="call">${I.call}打電話</button>
       <button class="btn wide" type="button" data-tr>${I.tr}翻譯（拍菜單、說話、常用句）</button>
-      ${qrLive() ? `<button class="btn wide" type="button" data-qr>${I.ticket}入境申報 QR code</button>` : ''}
     </div>
+    <section class="vch" id="vch" hidden></section>
     <section class="feed" id="feed"></section>
   </div>`;
+  renderVouchers();
   renderFeed();
 }
 
@@ -483,40 +487,12 @@ function renderStay() {
   <h2 class="sr-only">住宿與交通</h2>
   ${sectH('航班')}
   <div class="flights">${fl}<p class="visa">${I.check}<span>5 人電子簽證都已核准（11/15–11/21 單次入境），每人印一份自己的帶著</span></p></div>
-  ${sectH('憑證、QR code')}
-  <div class="topics">${(D.vouchers || []).map(voucherHTML).join('')}</div>
   ${sectH('住宿')}
   <div class="stack">${hotels}</div>
   ${sectH('包車')}
   <div class="car"><p class="car-h"><b>${esc(D.car.head)}</b><span>${esc(D.car.sub)}</span></p>
     <ol class="legs">${D.car.legs.map(([t, d, s]) => `<li><b>${t}<small>${d}</small></b><span>${esc(s)}</span></li>`).join('')}</ol>
     <p class="acts">${linkHTML(['wa', 'WhatsApp Mr. Phuong', '+84854848484'])}</p></div>`;
-}
-
-// 憑證：收起來是標題＋一行重點，點開是條列和「顯示 QR code」按鈕
-function voucherHTML(v) {
-  if (v.arrival && !qrLive()) return '';
-  // 整行只有 <b>…</b> 的是小標題（不加圓點）
-  const pts = v.p?.length ? `<ul class="pts">${v.p.map((x) => `<li${/^<b>[^<]*<\/b>$/.test(x) ? ' class="ph"' : ''}>${rich(x)}</li>`).join('')}</ul>` : '';
-  const btns = [
-    v.arrival ? `<button class="btn solid" type="button" data-qr>${I.ticket}打開入境申報 QR code</button>` : '',
-    ...(v.qr || []).filter((k) => S.data.vqr?.[k]).map((k) => `<button class="btn${v.qr.length === 1 ? ' solid' : ''}" type="button" data-vq="${k}">${I.ticket}${esc(v.qr.length > 1 ? S.data.vqr[k].t : '顯示 QR code')}</button>`),
-  ].join('');
-  const links = v.links?.length ? v.links.map(linkHTML).join('') : '';
-  return topicHTML({ icon: v.icon, h: esc(v.h), m: esc(v.m), body: `${pts}${btns || links ? `<p class="acts">${btns}${links}</p>` : ''}` });
-}
-
-function openVoucher(k) {
-  const g = S.data.vqr?.[k];
-  if (!g) return;
-  const [main, ...rest] = g.items;
-  const box = (it, sm) => `<figure class="vq${sm ? ' sm' : ''}"><div class="qr-box"><img src="${it.img}" alt="${esc(g.t)} ${esc(it.cap)}"></div>
-    <figcaption><b>${esc(it.cap)}</b><small>${esc(it.no)}</small></figcaption></figure>`;
-  openLayer(`${head(esc(g.t))}<div class="sh-body">
-    ${g.esim ? `<p class="warn qr-warn"><b>${I.info}長按 QR code →「加入 eSIM」</b>要用 Safari 開這個網頁、iOS 17.4 以上；只能裝一次。</p>` : ''}
-    ${box(main)}
-    ${rest.length ? `<p class="qr-cap">攤位要分開兌換時，掃下面這幾張</p><div class="vq-grid">${rest.map((it) => box(it, true)).join('')}</div>` : ''}
-  </div>`);
 }
 
 function contactHTML(c) {
@@ -594,6 +570,7 @@ function tick() {
     go.dataset.godate = e.dayId;
   }
   $('#addrNow').dataset.addr = addrNow(now);
+  renderVouchers();
   $$('.daybar [data-day]').forEach((b) => b.classList.toggle('today', S.data.days.find((d) => d.id === b.dataset.day)?.date === vnDate));
   markEvents();
 }
@@ -742,31 +719,107 @@ function openAddr(k) {
 
 // 入境申報 QR code：放在 qr.bin（家庭金鑰一層），每個人的那份再用自己的身分證字號（PBKDF2）加密，輸入對了才解得開。
 // 解開的圖只放在這個畫面（不存手機），關掉就要再輸入一次；越南時間 11/16 起不顯示，qr.bin 也會從 GitHub 刪掉。
+// ---------- 憑證、QR code（「現在」頁） ----------
+// 每個憑證到「使用日隔天 00:00（越南時間）」就不顯示；加密檔 v/*.bin 也會被刪掉（build.mjs、GitHub Actions）。
+// who：只給這些人看（eSIM）；lock：要輸入身分證字號（入境申報、電子簽證）
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-const qrLive = () => !!S.data?.arrivalQr && Date.now() < Date.parse(S.data.arrivalQr.until);
-async function qrFile() {
-  const res = await fetch('qr.bin', { cache: 'no-cache' });
-  if (!res.ok) throw new Error('qr.bin ' + res.status);
+const vLive = (v) => Date.now() < Date.parse(v.until);
+const vMine = (v) => !v.who || !!(S.me && v.who[S.me]);
+const vById = (id) => (S.data.vouchers || []).find((v) => v.id === id);
+function renderVouchers() {
+  const box = $('#vch');
+  if (!box) return;
+  const list = (S.data.vouchers || []).filter((v) => vLive(v) && vMine(v));
+  const sig = list.map((v) => v.id).join();
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.hidden = !list.length;
+  box.innerHTML = list.length ? `${sectH('憑證、QR code')}<ul class="vlist">${list.map((v) => `<li><button class="vrow" type="button" data-voucher="${v.id}">
+    <span class="tp-i">${I[v.icon] || I.ticket}</span>
+    <span class="ev-main"><span class="ev-h">${esc(v.h)}</span><span class="ev-m">${esc(v.m)}</span></span>
+    <span class="vr-go">${I.chev}</span></button></li>`).join('')}</ul>` : '';
+}
+async function vFile(path) {
+  const res = await fetch(path, { cache: 'no-cache' });
+  if (!res.ok) throw new Error('v ' + res.status);
   return decrypt(new Uint8Array(await res.arrayBuffer()), S.key);
 }
-async function qrDecrypt(e, id, iter) {
+const vErr = (e) => navigator.onLine === false ? '現在沒有網路，連上網路再試一次' : / 404$/.test(e?.message) ? '已經從網站刪掉了' : '下載失敗，重新整理網頁再試一次';
+// 先在背景下載還沒到期的憑證，到越南剛下飛機沒網路也打得開（service worker 會存起來）
+function prefetchVouchers() {
+  for (const v of S.data.vouchers || []) if (vLive(v)) for (const f of [v.file, ...Object.values(v.files || {})]) if (f) fetch(f, { cache: 'no-cache' }).catch(() => {});
+}
+// 手機裡存過的、已經到期的憑證檔也刪掉
+async function dropExpiredCache() {
+  if (!window.caches) return;
+  const now = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13);
+  for (const name of await caches.keys()) {
+    const c = await caches.open(name);
+    for (const req of await c.keys()) {
+      const p = new URL(req.url).pathname, m = /\/v\/(\d{8}T\d{4})-\w+\.bin$/.exec(p);
+      if ((m && m[1] <= now) || /\/qr\.bin$/.test(p)) await c.delete(req);
+    }
+  }
+}
+
+const qrFig = (img, alt, cap, no, sm) => `<figure class="vq${sm ? ' sm' : ''}"><div class="qr-box"><img src="${img}" alt="${esc(alt)}"></div>
+  ${cap || no ? `<figcaption>${cap ? `<b>${esc(cap)}</b>` : ''}${no ? `<small>${esc(no)}</small>` : ''}</figcaption>` : ''}</figure>`;
+async function fillQr(el, path, { rest = true } = {}) {
+  try {
+    const g = await vFile(path);
+    const [main, ...more] = g.items;
+    el.outerHTML = qrFig(main.img, g.t, g.items.length > 1 ? main.cap : '', main.no)
+      + (rest && more.length ? `<p class="qr-cap">攤位要分開兌換時，掃下面這幾張</p><div class="vq-grid">${more.map((it) => qrFig(it.img, g.t, it.cap, it.no, true)).join('')}</div>` : '');
+  } catch (e) { el.outerHTML = `<p class="qr-err">${vErr(e)}</p>`; }
+}
+const loadingQr = (path) => `<p class="vq-load" data-vqf="${path}">QR code 下載中…</p>`;
+
+function openVoucher(id) {
+  const v = vById(id);
+  if (!v || !vLive(v)) return toast('這個憑證已經從網站刪掉了');
+  if (v.who && !ensureMe(() => openVoucher(id))) return;
+  if (v.lock) return openLocked(v);
+  if (v.guide) return openEsim(v);
+  const pts = v.p?.length ? `<ul class="pts">${v.p.map((x) => `<li>${rich(x)}</li>`).join('')}</ul>` : '';
+  const links = v.links?.length ? `<p class="acts">${v.links.map(linkHTML).join('')}</p>` : '';
+  const sheet = openLayer(`${head(esc(v.h))}<div class="sh-body">
+    ${pts}${v.qr ? loadingQr(v.files[v.qr]) : ''}${links}</div>`);
+  $$('[data-vqf]', sheet).forEach((el) => fillQr(el, el.dataset.vqf));
+}
+
+// eSIM：養駃、純羽看 iPhone 版（含自己的 QR code），玥彤看安卓版
+function openEsim(v) {
+  const os = v.who[S.me];
+  if (!os) return toast('這個只有要用 eSIM 的人看得到');
+  const qr = v.qrBy?.[S.me] && v.files?.[v.qrBy[S.me]];
+  const step = (x) => x === '@qr' ? (qr ? `<li class="st-qr">${loadingQr(qr)}<p class="qr-cap">也可以用別支手機或電腦打開這個畫面，再用自己 iPhone 的「相機」掃</p></li>` : '') : `<li>${rich(x)}</li>`;
+  const secs = v.guide[os].map((s) => `<section class="gd"><h3>${esc(s.h)}</h3><ol class="steps">${s.steps.map(step).join('')}</ol>
+    ${s.note ? `<p class="gd-note">${I.info}<span>${rich(s.note)}</span></p>` : ''}</section>`).join('');
+  const info = v.info?.[os]?.length ? `<section class="gd"><h3>流量</h3><ul class="pts">${v.info[os].map((x) => `<li>${rich(x)}</li>`).join('')}</ul></section>` : '';
+  const links = v.links?.[os]?.length ? `<p class="acts">${v.links[os].map(linkHTML).join('')}</p>` : '';
+  const sheet = openLayer(`${head(`${esc(v.h)}・${os === 'ios' ? 'iPhone' : '安卓手機'}`)}<div class="sh-body">${secs}${info}${links}</div>`);
+  $$('[data-vqf]', sheet).forEach((el) => fillQr(el, el.dataset.vqf, { rest: false }));
+}
+
+// 入境申報、電子簽證：輸入自己的身分證字號才解得開，不存手機，關掉要再輸入一次
+async function idDecrypt(e, id, iter) {
   const base = await crypto.subtle.importKey('raw', enc.encode(id), 'PBKDF2', false, ['deriveKey']);
   const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(e.s), iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(e.i) }, k, b64(e.c)));
 }
-function openQr() {
-  if (!qrLive()) return toast('入境申報 QR code 已經從網站刪掉了');
-  if (!ensureMe(openQr)) return;
-  const share = S.data.arrivalQr.share[S.me], name = esc(memberName(S.me));
-  if (!share) return toast('找不到你的 QR code');
-  const sheet = openLayer(`${head('入境申報 QR code')}<div class="sh-body"><form class="form" id="qrForm" autocomplete="off">
+function openLocked(v) {
+  if (!ensureMe(() => openVoucher(v.id))) return;
+  if (!v.members?.includes(S.me)) return toast('找不到你的' + v.h);
+  const name = esc(memberName(S.me)), isDoc = v.lock === 'visa';
+  const pts = v.p?.length ? `<ul class="pts">${v.p.map((x) => `<li>${rich(x)}</li>`).join('')}</ul>` : '';
+  const sheet = openLayer(`${head(esc(v.h))}<div class="sh-body"><form class="form" id="idForm" autocomplete="off">
       <label>${name}的身分證字號
         <input class="field" name="nid" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="12" required placeholder="英文字母＋9 個數字"></label>
       <p class="qr-err" role="alert" hidden></p>
       <button class="btn solid" type="submit">打開</button>
       <button class="btn small" type="button" data-qrme>不是${name}？換人</button>
-    </form></div>`);
-  const form = $('#qrForm', sheet), err = $('.qr-err', sheet), go = $('button[type=submit]', form);
+    </form>${pts}</div>`);
+  const form = $('#idForm', sheet), err = $('.qr-err', sheet), go = $('button[type=submit]', form);
   const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = '打開'; };
   let found = null;
   sheet.addEventListener('click', (ev) => {
@@ -777,7 +830,7 @@ function openQr() {
     }
     if (!ev.target.closest('[data-qrme]')) return;
     requestClose();
-    setTimeout(() => openMe(openQr), 60);
+    setTimeout(() => openMe(() => openVoucher(v.id)), 60);
   });
   const BAD_BROWSER = '這個瀏覽器打不開，請用 Safari 或 Chrome 打開家庭連結';
   form.addEventListener('submit', async (ev) => {
@@ -788,13 +841,11 @@ function openQr() {
     if (!crypto.subtle?.deriveKey) return fail(BAD_BROWSER);
     err.hidden = true; go.disabled = true; go.textContent = '打開中…';
     let Q;
-    try { Q = await qrFile(); } catch (e) {
-      return fail(navigator.onLine === false ? '現在沒有網路，連上網路再試一次' : / 404$/.test(e?.message) ? 'QR code 已經從網站刪掉了' : '下載失敗，重新整理網頁再試一次');
-    }
-    // 先試目前選的人；不對再同時試其他人（身分可能選錯），誰的字號對就給誰的那張
-    const tryOne = (m) => qrDecrypt(Q.entries[m], id, Q.iter).then((png) => ({ m, png }));
+    try { Q = await vFile(v.file); } catch (e) { return fail(vErr(e)); }
+    // 先試目前選的人；不對再同時試其他人（身分可能選錯），誰的字號對就給誰的
+    const tryOne = (m) => idDecrypt(Q.entries[m], id, Q.iter).then((bin) => ({ m, bin }));
     let hit = null, broken = false;
-    const note = (e) => { if (e?.name !== 'OperationError') { broken = true; console.warn('qr', e); } };
+    const note = (e) => { if (e?.name !== 'OperationError') { broken = true; console.warn('lock', e); } };
     try { hit = await tryOne(S.me); } catch (e) {
       note(e);
       const rest = await Promise.allSettled(Object.keys(Q.entries).filter((m) => m !== S.me).map(tryOne));
@@ -803,12 +854,14 @@ function openQr() {
     }
     if (!hit) return fail(broken ? BAD_BROWSER : '字號不對，再確認一次');
     found = hit.m;
-    const url = URL.createObjectURL(new Blob([hit.png], { type: 'image/png' }));
+    const url = URL.createObjectURL(new Blob([hit.bin], { type: Q.mime || 'image/png' }));
     sheet.parentElement.cleanup = () => URL.revokeObjectURL(url);
-    const owner = esc(memberName(hit.m)), all = (S.data.arrivalQr.share[hit.m] || [hit.m]).map(memberName);
-    $('.sh-body', sheet).innerHTML = `<p class="warn qr-warn" role="alert"><b>${I.cam}請馬上截圖存到相簿</b>關掉這個畫面就要再輸入一次身分證字號，11/16 起網站會刪掉。</p>
-      <div class="qr-box"><img src="${url}" alt="${owner}的入境申報 QR code"></div>
-      <p class="qr-cap">${all.length > 1 ? `${esc(all.join('、'))} ${all.length} 人共用這一張` : `${owner}自己的`}・入境時給海關看</p>
+    const owner = esc(memberName(hit.m)), all = (v.share?.[hit.m] || [hit.m]).map(memberName);
+    const gone = label(ymd(Date.parse(v.until), OFF_VN)).replace(/（.*$/, '');
+    $('.sh-body', sheet).innerHTML = `<p class="warn qr-warn" role="alert"><b>${I.cam}${isDoc ? '長按圖片 →「加入照片」存起來' : '請馬上截圖存到相簿'}</b>關掉這個畫面就要再輸入一次身分證字號，${gone} 起網站會刪掉。</p>
+      ${isDoc ? `<div class="doc-box"><img src="${url}" alt="${owner}的電子簽證"></div><p class="qr-cap">${owner}的電子簽證・紙本也要帶</p>`
+        : `<div class="qr-box"><img src="${url}" alt="${owner}的${esc(v.h)} QR code"></div>
+      <p class="qr-cap">${all.length > 1 ? `${esc(all.join('、'))} ${all.length} 人共用這一張` : `${owner}自己的`}・入境時給海關看</p>`}
       ${hit.m !== S.me ? `<p class="qr-cap">這是${owner}的字號，這支手機選的是${name}・<button class="btn small" type="button" data-qrswitch>改成${owner}</button></p>` : ''}`;
   });
 }
@@ -1449,8 +1502,7 @@ document.addEventListener('click', (e) => {
   else if (d.add) openAdd(d.add);
   else if (d.addplace) openAdd(null, d.addplace);
   else if (d.addr) openAddr(d.addr);
-  else if ('qr' in d) openQr();
-  else if (d.vq) openVoucher(d.vq);
+  else if (d.voucher) openVoucher(d.voucher);
   else if (d.copy) copy(d.copy, t);
   else if ('close' in d) requestClose();
   else if (d.delplan) {

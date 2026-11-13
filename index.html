@@ -404,10 +404,35 @@ button.ev-row:focus-visible { outline: 3px solid var(--red); outline-offset: 2px
 .qr-box img { display: block; width: min(72vw, 300px); height: auto; image-rendering: pixelated; }
 .qr-cap { text-align: center; color: var(--muted); font-size: .95rem; }
 .qr-err { margin: 0; color: var(--red); font-weight: 700; }
-/* Klook 憑證 QR code */
-.pts li.ph { padding-left: 0; margin-top: 6px; color: var(--jade); }
-.pts li.ph:first-child { margin-top: 0; }
-.pts li.ph::before { content: none; }
+/* 「現在」頁的憑證、QR code：一列一個，點了開浮層 */
+.vch .seg-h { min-height: 32px; }
+.vlist { list-style: none; margin: 4px 0 0; padding: 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+.vlist li + li { border-top: 1px solid var(--line); }
+.vrow {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) 24px; column-gap: 12px; align-items: center;
+  width: 100%; min-height: 60px; padding: 10px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.vrow:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; border-radius: 10px; }
+.vr-go { display: grid; place-items: center; color: var(--muted); }
+.vr-go svg { width: 20px; height: 20px; transform: rotate(-90deg); }
+.vq-load { margin: 0; padding: 24px 0; text-align: center; color: var(--muted); }
+.doc-box { flex: none; background: #fff; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); overflow: hidden; }
+.doc-box img { display: block; width: 100%; height: auto; }
+/* eSIM 教學：分段標題＋編號步驟 */
+.gd { display: flex; flex-direction: column; gap: 10px; }
+.gd + .gd { border-top: 1px solid var(--line); padding-top: 16px; }
+.gd h3 { margin: 0; font-size: 1.05rem; line-height: 1.4; color: var(--jade); }
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: st; display: flex; flex-direction: column; gap: 10px; }
+.steps li { position: relative; padding-left: 34px; line-height: 1.55; }
+.steps li:not(.st-qr) { counter-increment: st; }
+.steps li:not(.st-qr)::before {
+  content: counter(st); position: absolute; left: 0; top: .05em; width: 24px; height: 24px; border-radius: 99px;
+  display: grid; place-items: center; background: var(--jade-soft); color: var(--jade); font: 700 .85rem/1 var(--num);
+}
+.steps .st-qr { padding-left: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gd-note { margin: 0; display: flex; gap: 8px; align-items: flex-start; background: var(--amber-soft); border-radius: 10px; padding: 8px 12px; font-size: .95rem; line-height: 1.5; }
+.gd-note svg { width: 18px; height: 18px; flex: none; margin-top: 3px; color: var(--amber); }
 .vq { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .vq figcaption { display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1.4; }
 .vq figcaption small { color: var(--muted); font-size: .85rem; font-family: var(--num); }
@@ -661,6 +686,6 @@ mark.beef { background: var(--red); color: var(--on-accent); border-radius: 6px;
 </div>
 <div id="app" hidden></div>
 <noscript><p style="padding:24px">這個網頁需要開啟 JavaScript。</p></noscript>
-<script type="module" src="app.js?v=5ece8ae8"></script>
+<script type="module" src="app.js?v=4881146b"></script>
 </body>
 </html>
