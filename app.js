@@ -742,25 +742,48 @@ function openQr() {
     </form></div>`);
   const form = $('#qrForm', sheet), err = $('.qr-err', sheet), go = $('button[type=submit]', form);
   const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = '打開'; };
+  let found = null;
   sheet.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-qrswitch]') && found) {
+      S.me = found; store.set('nv-me', S.me); renderMe(); updateLikesUI(); updateBadge();
+      ev.target.closest('p').remove();
+      return;
+    }
     if (!ev.target.closest('[data-qrme]')) return;
     requestClose();
     setTimeout(() => openMe(openQr), 60);
   });
+  const BAD_BROWSER = '這個瀏覽器打不開，請用 Safari 或 Chrome 打開家庭連結';
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const id = form.elements.nid.value.replace(/\s+/g, '').toUpperCase();
+    // 中文輸入法可能打出全形字（Ｌ２２…），先轉半形；空白、連字號都拿掉
+    const id = form.elements.nid.value.normalize('NFKC').replace(/[\s\-‐‑–—]/g, '').toUpperCase();
     if (!/^[A-Z][0-9]{9}$/.test(id)) return fail('身分證字號是 1 個英文字母加 9 個數字');
+    if (!crypto.subtle?.deriveKey) return fail(BAD_BROWSER);
     err.hidden = true; go.disabled = true; go.textContent = '打開中…';
-    let Q, png;
-    try { Q = await qrFile(); } catch { return fail(navigator.onLine === false ? '現在沒有網路，連上網路再試一次' : 'QR code 已經從網站刪掉了'); }
-    try { png = await qrDecrypt(Q.entries[S.me], id, Q.iter); } catch { return fail('字號不對，再確認一次'); }
-    const url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+    let Q;
+    try { Q = await qrFile(); } catch (e) {
+      return fail(navigator.onLine === false ? '現在沒有網路，連上網路再試一次' : / 404$/.test(e?.message) ? 'QR code 已經從網站刪掉了' : '下載失敗，重新整理網頁再試一次');
+    }
+    // 先試目前選的人；不對再同時試其他人（身分可能選錯），誰的字號對就給誰的那張
+    const tryOne = (m) => qrDecrypt(Q.entries[m], id, Q.iter).then((png) => ({ m, png }));
+    let hit = null, broken = false;
+    const note = (e) => { if (e?.name !== 'OperationError') { broken = true; console.warn('qr', e); } };
+    try { hit = await tryOne(S.me); } catch (e) {
+      note(e);
+      const rest = await Promise.allSettled(Object.keys(Q.entries).filter((m) => m !== S.me).map(tryOne));
+      rest.forEach((r) => r.status === 'rejected' && note(r.reason));
+      hit = rest.find((r) => r.status === 'fulfilled')?.value || null;
+    }
+    if (!hit) return fail(broken ? BAD_BROWSER : '字號不對，再確認一次');
+    found = hit.m;
+    const url = URL.createObjectURL(new Blob([hit.png], { type: 'image/png' }));
     sheet.parentElement.cleanup = () => URL.revokeObjectURL(url);
-    const all = share.map(memberName);
+    const owner = esc(memberName(hit.m)), all = (S.data.arrivalQr.share[hit.m] || [hit.m]).map(memberName);
     $('.sh-body', sheet).innerHTML = `<p class="warn qr-warn" role="alert"><b>${I.cam}請馬上截圖存到相簿</b>關掉這個畫面就要再輸入一次身分證字號，11/16 起網站會刪掉。</p>
-      <div class="qr-box"><img src="${url}" alt="${name}的入境申報 QR code"></div>
-      <p class="qr-cap">${all.length > 1 ? `${esc(all.join('、'))} ${all.length} 人共用這一張` : `${name}自己的`}・入境時給海關看</p>`;
+      <div class="qr-box"><img src="${url}" alt="${owner}的入境申報 QR code"></div>
+      <p class="qr-cap">${all.length > 1 ? `${esc(all.join('、'))} ${all.length} 人共用這一張` : `${owner}自己的`}・入境時給海關看</p>
+      ${hit.m !== S.me ? `<p class="qr-cap">這是${owner}的字號，這支手機選的是${name}・<button class="btn small" type="button" data-qrswitch>改成${owner}</button></p>` : ''}`;
   });
 }
 
