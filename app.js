@@ -176,7 +176,7 @@ const avatar = (id, sm) => id && AV[id] ? `<span class="av ${id}${sm ? ' sm' : '
 const memberName = (id) => S.data?.members.find((m) => m.id === id)?.name || '';
 function linkHTML([type, text, val]) {
   if (type === 'tel') return `<a class="lnk tel" href="tel:${esc(val)}">${esc(text)}</a>`;
-  if (type === 'wa') return `<a class="lnk wa" href="https://wa.me/${val.replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(text)}</a>`;
+  if (type === 'wa') return `<button class="lnk wa" type="button" data-wa="${val.replace(/\D/g, '')}" data-wan="${esc(text)}">${esc(text)}</button>`;
   if (type === 'web') return `<a class="lnk web" href="${esc(val)}" target="_blank" rel="noopener">${esc(text)}</a>`;
   const href = /^https?:/.test(val) ? val : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(val);
   return `<a class="lnk map" href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
@@ -866,6 +866,23 @@ function openLocked(v) {
   });
 }
 
+// WhatsApp：先選一句（中文看、英文送），點了複製英文、打開 WhatsApp 並填好訊息
+function openWa(num, label) {
+  const W = S.data.wa || {}, [name, own = []] = W[num] || [String(label || '').replace(/^WhatsApp\s*/, ''), []];
+  const fill = (en) => en.replace(/\{(\w+)\}/g, (_, k) => W.vars?.[k]?.[S.me] || '______');
+  const row = ([zh, en]) => { const t = fill(en); return `<li><a class="wa-ph" href="https://wa.me/${num}?text=${encodeURIComponent(t)}" target="_blank" rel="noopener" data-wacopy="${esc(t)}">
+    <b>${esc(zh)}</b><span lang="en">${esc(t)}</span></a></li>`; };
+  const sheet = openLayer(`${head(`WhatsApp・${esc(name || label)}`)}<div class="sh-body">
+    <p class="muted wa-tip">點一句：會打開 WhatsApp 並填好英文，按送出就好（也會複製一份）。有 __:__ 的，送出前改成時間。</p>
+    ${own.length ? `<ul class="wa-list">${own.map(row).join('')}</ul><h3 class="wa-h">其他常用</h3>` : ''}
+    <ul class="wa-list">${(W.common || []).map(row).join('')}</ul>
+    <p class="acts"><a class="lnk wa" href="https://wa.me/${num}" target="_blank" rel="noopener">直接打開 WhatsApp</a></p></div>`);
+  sheet.addEventListener('click', (e) => {
+    const a = e.target.closest('[data-wacopy]');
+    if (a) navigator.clipboard?.writeText(a.dataset.wacopy).catch(() => {});
+  });
+}
+
 function openMe(after) {
   const sheet = openLayer(`${head('你是誰？')}<div class="sh-body"><p>選一次就好，之後按「想去」、加行程、聊天都會用這個名字。</p>
     <div class="pick-me">${S.data.members.map((m) => `<button class="opt" type="button" data-pickme="${m.id}" aria-pressed="${S.me === m.id}">${avatar(m.id)}${esc(m.name)}</button>`).join('')}</div></div>`);
@@ -1503,6 +1520,7 @@ document.addEventListener('click', (e) => {
   else if (d.addplace) openAdd(null, d.addplace);
   else if (d.addr) openAddr(d.addr);
   else if (d.voucher) openVoucher(d.voucher);
+  else if (d.wa) openWa(d.wa, d.wan);
   else if (d.copy) copy(d.copy, t);
   else if ('close' in d) requestClose();
   else if (d.delplan) {
