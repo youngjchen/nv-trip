@@ -66,6 +66,7 @@ const I = {
   check: svg('<path d="M4 12.5l5 5L20 6.5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
   plane: svg('<path d="M10.5 13.5 3 11l1.5-1.5 7 1 4-4.5c1-1 2.6-1.2 3.3-.5s.5 2.3-.5 3.3l-4.5 4 1 7L14 21.5l-2.5-7.5-3 2.5v2l-1.5 1-1-3-3-1 1-1.5h2z"/>'),
+  sim: svg('<path d="M7 3h7l4 4v14H7z"/><rect x="9.5" y="11" width="6" height="6" rx="1"/>'),
   ticket: svg('<path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z"/><path d="M14 7v10" stroke-dasharray="2 2"/>'),
 };
 
@@ -481,16 +482,41 @@ function renderStay() {
   $('#v-stay').innerHTML = `
   <h2 class="sr-only">住宿與交通</h2>
   ${sectH('航班')}
-  <div class="flights">${fl}<p class="visa">${I.check}<span>5 人電子簽證都已核准（11/15–11/21 單次入境），每人印一份自己的帶著</span></p>
-    ${qrLive() ? `<button class="btn qr-open" type="button" data-qr>${I.ticket}入境申報 QR code</button>` : ''}</div>
+  <div class="flights">${fl}<p class="visa">${I.check}<span>5 人電子簽證都已核准（11/15–11/21 單次入境），每人印一份自己的帶著</span></p></div>
+  ${sectH('憑證、QR code')}
+  <div class="topics">${(D.vouchers || []).map(voucherHTML).join('')}</div>
   ${sectH('住宿')}
   <div class="stack">${hotels}</div>
   ${sectH('包車')}
   <div class="car"><p class="car-h"><b>${esc(D.car.head)}</b><span>${esc(D.car.sub)}</span></p>
     <ol class="legs">${D.car.legs.map(([t, d, s]) => `<li><b>${t}<small>${d}</small></b><span>${esc(s)}</span></li>`).join('')}</ol>
-    <p class="acts">${linkHTML(['wa', 'WhatsApp Mr. Phuong', '+84854848484'])}</p></div>
-  ${sectH('門票、預訂')}
-  <div class="car">${kv(D.tickets)}</div>`;
+    <p class="acts">${linkHTML(['wa', 'WhatsApp Mr. Phuong', '+84854848484'])}</p></div>`;
+}
+
+// 憑證：收起來是標題＋一行重點，點開是條列和「顯示 QR code」按鈕
+function voucherHTML(v) {
+  if (v.arrival && !qrLive()) return '';
+  // 整行只有 <b>…</b> 的是小標題（不加圓點）
+  const pts = v.p?.length ? `<ul class="pts">${v.p.map((x) => `<li${/^<b>[^<]*<\/b>$/.test(x) ? ' class="ph"' : ''}>${rich(x)}</li>`).join('')}</ul>` : '';
+  const btns = [
+    v.arrival ? `<button class="btn solid" type="button" data-qr>${I.ticket}打開入境申報 QR code</button>` : '',
+    ...(v.qr || []).filter((k) => S.data.vqr?.[k]).map((k) => `<button class="btn${v.qr.length === 1 ? ' solid' : ''}" type="button" data-vq="${k}">${I.ticket}${esc(v.qr.length > 1 ? S.data.vqr[k].t : '顯示 QR code')}</button>`),
+  ].join('');
+  const links = v.links?.length ? v.links.map(linkHTML).join('') : '';
+  return topicHTML({ icon: v.icon, h: esc(v.h), m: esc(v.m), body: `${pts}${btns || links ? `<p class="acts">${btns}${links}</p>` : ''}` });
+}
+
+function openVoucher(k) {
+  const g = S.data.vqr?.[k];
+  if (!g) return;
+  const [main, ...rest] = g.items;
+  const box = (it, sm) => `<figure class="vq${sm ? ' sm' : ''}"><div class="qr-box"><img src="${it.img}" alt="${esc(g.t)} ${esc(it.cap)}"></div>
+    <figcaption><b>${esc(it.cap)}</b><small>${esc(it.no)}</small></figcaption></figure>`;
+  openLayer(`${head(esc(g.t))}<div class="sh-body">
+    ${g.esim ? `<p class="warn qr-warn"><b>${I.info}長按 QR code →「加入 eSIM」</b>要用 Safari 開這個網頁、iOS 17.4 以上；只能裝一次。</p>` : ''}
+    ${box(main)}
+    ${rest.length ? `<p class="qr-cap">攤位要分開兌換時，掃下面這幾張</p><div class="vq-grid">${rest.map((it) => box(it, true)).join('')}</div>` : ''}
+  </div>`);
 }
 
 function contactHTML(c) {
@@ -1424,6 +1450,7 @@ document.addEventListener('click', (e) => {
   else if (d.addplace) openAdd(null, d.addplace);
   else if (d.addr) openAddr(d.addr);
   else if ('qr' in d) openQr();
+  else if (d.vq) openVoucher(d.vq);
   else if (d.copy) copy(d.copy, t);
   else if ('close' in d) requestClose();
   else if (d.delplan) {

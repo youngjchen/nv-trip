@@ -404,6 +404,16 @@ button.ev-row:focus-visible { outline: 3px solid var(--red); outline-offset: 2px
 .qr-box img { display: block; width: min(72vw, 300px); height: auto; image-rendering: pixelated; }
 .qr-cap { text-align: center; color: var(--muted); font-size: .95rem; }
 .qr-err { margin: 0; color: var(--red); font-weight: 700; }
+/* Klook 憑證 QR code */
+.pts li.ph { padding-left: 0; margin-top: 6px; color: var(--jade); }
+.pts li.ph:first-child { margin-top: 0; }
+.pts li.ph::before { content: none; }
+.vq { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.vq figcaption { display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1.4; }
+.vq figcaption small { color: var(--muted); font-size: .85rem; font-family: var(--num); }
+.vq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+.vq.sm .qr-box { padding: 8px; }
+.vq.sm .qr-box img { width: 120px; }
 .car-h { margin: 10px 0 2px; display: flex; flex-direction: column; }
 .car-h span { font-size: .88rem; color: var(--muted); }
 .car .kv { margin-top: 10px; }
@@ -651,6 +661,6 @@ mark.beef { background: var(--red); color: var(--on-accent); border-radius: 6px;
 </div>
 <div id="app" hidden></div>
 <noscript><p style="padding:24px">這個網頁需要開啟 JavaScript。</p></noscript>
-<script type="module" src="app.js?v=4e7b7eb7"></script>
+<script type="module" src="app.js?v=5ece8ae8"></script>
 </body>
 </html>
